@@ -64,6 +64,7 @@ require (
 // Replace with local Monetarium dcrd modules for dual-coin support
 replace (
 	github.com/decred/dcrd/blockchain/stake/v5 => ../dcrd/blockchain/stake
+	github.com/decred/dcrd/blockchain/standalone/v2 => ../dcrd/blockchain/standalone
 	github.com/decred/dcrd/blockchain/v5 => ../dcrd/blockchain
 	github.com/decred/dcrd/chaincfg/chainhash => ../dcrd/chaincfg/chainhash
 	github.com/decred/dcrd/chaincfg/v3 => ../dcrd/chaincfg

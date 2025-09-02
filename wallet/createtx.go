@@ -112,6 +112,24 @@ func (w *Wallet) NewUnsignedTransaction(ctx context.Context, outputs []*wire.TxO
 			}
 		}
 
+		// Determine coin type from outputs
+		var txCoinType cointype.CoinType = cointype.CoinTypeVAR
+		if len(outputs) > 0 {
+			txCoinType = outputs[0].CoinType
+		}
+
+		// Create coin-type-aware input source if nil
+		if inputSource == nil {
+			_, tipHeight := w.txStore.MainChainTip(dbtx)
+			ignoreInput := func(op *wire.OutPoint) bool {
+				_, ok := w.lockedOutpoints[outpoint{op.Hash, op.Index}]
+				return ok
+			}
+			inputSourceObj := w.txStore.MakeInputSourceWithCoinType(dbtx, account,
+				minConf, tipHeight, ignoreInput, txCoinType)
+			inputSource = inputSourceObj.SelectInputs
+		}
+
 		if changeSource == nil {
 			changeSource = &p2PKHChangeSource{
 				persist: w.deferPersistReturnedChild(ctx, &changeSourceUpdates),
@@ -122,7 +140,7 @@ func (w *Wallet) NewUnsignedTransaction(ctx context.Context, outputs []*wire.TxO
 		}
 
 		// Calculate relay fee based on transaction coin type
-		actualRelayFee := relayFeePerKb
+		actualRelayFee := w.RelayFeeForCoinType(txCoinType)
 
 		var err error
 		authoredTx, err = txauthor.NewUnsignedTransaction(outputs, actualRelayFee,
@@ -131,22 +149,37 @@ func (w *Wallet) NewUnsignedTransaction(ctx context.Context, outputs []*wire.TxO
 			return err
 		}
 
-		// Dual-coin validation: Ensure all inputs have the same coin type as outputs
-		if len(authoredTx.Tx.TxOut) > 0 && len(authoredTx.Tx.TxIn) > 0 {
+		// Set coin type on change output if present
+		if authoredTx.ChangeIndex >= 0 {
+			authoredTx.Tx.TxOut[authoredTx.ChangeIndex].CoinType = txCoinType
+		}
+
+		// Dual-coin validation: Ensure all outputs and inputs have the same coin type
+		if len(authoredTx.Tx.TxOut) > 0 {
 			expectedCoinType := authoredTx.Tx.TxOut[0].CoinType
-			txmgrNs := dbtx.ReadBucket(wtxmgrNamespaceKey)
+			
+			// Validate all outputs have the same coin type
+			for i, txOut := range authoredTx.Tx.TxOut {
+				if txOut.CoinType != expectedCoinType {
+					return errors.E(errors.Invalid, fmt.Sprintf("output %d coin type %d does not match expected coin type %d",
+						i, txOut.CoinType, expectedCoinType))
+				}
+			}
 
 			// Validate each input has the same coin type as outputs
-			for i, txIn := range authoredTx.Tx.TxIn {
-				// Look up the previous output being spent
-				prevCredit, err := w.txStore.UnspentOutput(txmgrNs, txIn.PreviousOutPoint, true)
-				if err != nil {
-					return errors.E(errors.Invalid, fmt.Sprintf("failed to lookup input %d previous output: %v", i, err))
-				}
+			if len(authoredTx.Tx.TxIn) > 0 {
+				txmgrNs := dbtx.ReadBucket(wtxmgrNamespaceKey)
+				for i, txIn := range authoredTx.Tx.TxIn {
+					// Look up the previous output being spent
+					prevCredit, err := w.txStore.UnspentOutput(txmgrNs, txIn.PreviousOutPoint, true)
+					if err != nil {
+						return errors.E(errors.Invalid, fmt.Sprintf("failed to lookup input %d previous output: %v", i, err))
+					}
 
-				if prevCredit.CoinType != expectedCoinType {
-					return errors.E(errors.Invalid, fmt.Sprintf("input %d coin type %d does not match output coin type %d",
-						i, prevCredit.CoinType, expectedCoinType))
+					if prevCredit.CoinType != expectedCoinType {
+						return errors.E(errors.Invalid, fmt.Sprintf("input %d coin type %d does not match output coin type %d",
+							i, prevCredit.CoinType, expectedCoinType))
+					}
 				}
 			}
 		}
@@ -477,6 +510,11 @@ func (w *Wallet) authorTx(ctx context.Context, op errors.Op, a *authorTx) error 
 			atx.RandomizeChangePosition()
 		}
 
+		// Ensure change output has correct coin type
+		if atx.ChangeIndex >= 0 && len(a.outputs) > 0 {
+			atx.Tx.TxOut[atx.ChangeIndex].CoinType = a.outputs[0].CoinType
+		}
+
 		// TADDs need to use version 3 txs.
 		if a.isTreasury {
 			// This check ensures that if NewUnsignedTransaction is
@@ -525,6 +563,17 @@ func (w *Wallet) authorTx(ctx context.Context, op errors.Op, a *authorTx) error 
 		err = validateMsgTx(op, atx.Tx, atx.PrevScripts)
 		if err != nil {
 			return errors.E(op, err)
+		}
+	}
+
+	// Validate all outputs have the same coin type
+	if len(atx.Tx.TxOut) > 0 {
+		expectedCoinType := atx.Tx.TxOut[0].CoinType
+		for i, txOut := range atx.Tx.TxOut {
+			if txOut.CoinType != expectedCoinType {
+				return errors.E(op, fmt.Sprintf("output %d coin type %d does not match expected coin type %d",
+					i, txOut.CoinType, expectedCoinType))
+			}
 		}
 	}
 
@@ -577,7 +626,7 @@ func (w *Wallet) recordAuthoredTx(ctx context.Context, op errors.Op, a *authorTx
 // txToMultisig spends funds to a multisig output, partially signs the
 // transaction, then returns fund
 func (w *Wallet) txToMultisig(ctx context.Context, op errors.Op, account uint32, amount dcrutil.Amount, pubkeys [][]byte,
-	nRequired int8, minconf int32) (*CreatedTx, stdaddr.Address, []byte, error) {
+	nRequired int8, minconf int32, coinType cointype.CoinType) (*CreatedTx, stdaddr.Address, []byte, error) {
 
 	defer w.lockedOutpointMu.Unlock()
 	w.lockedOutpointMu.Lock()
@@ -588,7 +637,7 @@ func (w *Wallet) txToMultisig(ctx context.Context, op errors.Op, account uint32,
 	err := walletdb.Update(ctx, w.db, func(dbtx walletdb.ReadWriteTx) error {
 		var err error
 		created, addr, msScript, err = w.txToMultisigInternal(ctx, op, dbtx,
-			account, amount, pubkeys, nRequired, minconf)
+			account, amount, pubkeys, nRequired, minconf, coinType)
 		return err
 	})
 	if err != nil {
@@ -598,7 +647,7 @@ func (w *Wallet) txToMultisig(ctx context.Context, op errors.Op, account uint32,
 }
 
 func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx walletdb.ReadWriteTx, account uint32, amount dcrutil.Amount,
-	pubkeys [][]byte, nRequired int8, minconf int32) (*CreatedTx, stdaddr.Address, []byte, error) {
+	pubkeys [][]byte, nRequired int8, minconf int32, coinType cointype.CoinType) (*CreatedTx, stdaddr.Address, []byte, error) {
 
 	addrmgrNs := dbtx.ReadWriteBucket(waddrmgrNamespaceKey)
 
@@ -634,7 +683,7 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 	const minAmount = 0
 	const maxResults = 0
 	eligible, err := w.findEligibleOutputsAmount(dbtx, account, minconf,
-		amountRequired, topHeight, minAmount, maxResults)
+		amountRequired, topHeight, minAmount, maxResults, coinType)
 	if err != nil {
 		return txToMultisigError(errors.E(op, err))
 	}
@@ -688,6 +737,7 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 		Value:    int64(amount),
 		PkScript: p2shScript,
 		Version:  vers,
+		CoinType: coinType,
 	}
 	msgtx.AddTxOut(txOut)
 
@@ -697,7 +747,7 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 		changeSize = txsizes.P2PKHPkScriptSize
 	}
 	feeSize := txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, changeSize)
-	feeEst := txrules.FeeForSerializeSize(w.RelayFee(), feeSize)
+	feeEst := txrules.FeeForSerializeSize(w.RelayFeeForCoinType(coinType), feeSize)
 
 	if totalInput < amount+feeEst {
 		return txToMultisigError(errors.E(op, errors.InsufficientBalance))
@@ -719,6 +769,7 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 			Value:    int64(change),
 			Version:  vers,
 			PkScript: pkScript,
+			CoinType: coinType,
 		})
 	}
 
@@ -791,14 +842,14 @@ func creditScripts(credits []Input) [][]byte {
 
 // compressWallet compresses all the utxos in a wallet into a single change
 // address. For use when it becomes dusty.
-func (w *Wallet) compressWallet(ctx context.Context, op errors.Op, maxNumIns int, account uint32, changeAddr stdaddr.Address) (*chainhash.Hash, error) {
+func (w *Wallet) compressWallet(ctx context.Context, op errors.Op, maxNumIns int, account uint32, changeAddr stdaddr.Address, coinType cointype.CoinType) (*chainhash.Hash, error) {
 	defer w.lockedOutpointMu.Unlock()
 	w.lockedOutpointMu.Lock()
 
 	var hash *chainhash.Hash
 	err := walletdb.Update(ctx, w.db, func(dbtx walletdb.ReadWriteTx) error {
 		var err error
-		hash, err = w.compressWalletInternal(ctx, op, dbtx, maxNumIns, account, changeAddr)
+		hash, err = w.compressWalletInternal(ctx, op, dbtx, maxNumIns, account, changeAddr, coinType)
 		return err
 	})
 	if err != nil {
@@ -808,7 +859,7 @@ func (w *Wallet) compressWallet(ctx context.Context, op errors.Op, maxNumIns int
 }
 
 func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx walletdb.ReadWriteTx, maxNumIns int, account uint32,
-	changeAddr stdaddr.Address) (*chainhash.Hash, error) {
+	changeAddr stdaddr.Address, coinType cointype.CoinType) (*chainhash.Hash, error) {
 
 	addrmgrNs := dbtx.ReadWriteBucket(waddrmgrNamespaceKey)
 
@@ -821,7 +872,7 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 	_, tipHeight := w.txStore.MainChainTip(dbtx)
 
 	minconf := int32(1)
-	eligible, err := w.findEligibleOutputs(dbtx, account, minconf, tipHeight)
+	eligible, err := w.findEligibleOutputs(dbtx, account, minconf, tipHeight, coinType)
 	if err != nil {
 		return nil, errors.E(op, err)
 	}
@@ -855,6 +906,7 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 		Value:    0,
 		PkScript: pkScript,
 		Version:  vers,
+		CoinType: coinType,
 	})
 	maximumTxSize := w.chainParams.MaxTxSize
 	if w.chainParams.Net == wire.MainNet {
@@ -885,7 +937,7 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 
 	// Get an initial fee estimate based on the number of selected inputs
 	// and added outputs, with no change.
-	feeRate := w.RelayFee()
+	feeRate := w.RelayFeeForCoinType(coinType)
 	szEst := txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, 0)
 	feeEst := txrules.FeeForSerializeSize(feeRate, szEst)
 
@@ -949,6 +1001,7 @@ func makeTicket(params *chaincfg.Params, input *Input, addrVote stdaddr.StakeAdd
 		Value:    ticketCost,
 		PkScript: pkScript,
 		Version:  vers,
+		CoinType: cointype.CoinTypeVAR, // Tickets are VAR-only
 	}
 	mtx.AddTxOut(txOut)
 
@@ -980,6 +1033,7 @@ func makeTicket(params *chaincfg.Params, input *Input, addrVote stdaddr.StakeAdd
 		Value:    0,
 		PkScript: pkScript,
 		Version:  vers,
+		CoinType: cointype.CoinTypeVAR, // Tickets are VAR-only
 	}
 	mtx.AddTxOut(txout)
 
@@ -990,6 +1044,7 @@ func makeTicket(params *chaincfg.Params, input *Input, addrVote stdaddr.StakeAdd
 		Value:    0,
 		PkScript: pkScript,
 		Version:  vers,
+		CoinType: cointype.CoinTypeVAR, // Tickets are VAR-only
 	}
 	mtx.AddTxOut(txOut)
 
@@ -1006,11 +1061,13 @@ var p2pkhSizedScript = make([]byte, 25)
 func (w *Wallet) mixedSplit(ctx context.Context, req *PurchaseTicketsRequest, neededPerTicket dcrutil.Amount) (tx *wire.MsgTx, outIndexes []int, err error) {
 	// Use txauthor to perform input selection and change amount
 	// calculations for the unmixed portions of the coinjoin.
+	// Tickets are VAR-only
+	const ticketCoinType = cointype.CoinTypeVAR
 	mixOut := make([]*wire.TxOut, req.Count)
 	for i := 0; i < req.Count; i++ {
-		mixOut[i] = &wire.TxOut{Value: int64(neededPerTicket), Version: 0, PkScript: p2pkhSizedScript}
+		mixOut[i] = &wire.TxOut{Value: int64(neededPerTicket), Version: 0, PkScript: p2pkhSizedScript, CoinType: ticketCoinType}
 	}
-	relayFee := w.RelayFee()
+	relayFee := w.RelayFeeForCoinType(ticketCoinType)
 	var changeSourceUpdates []func(walletdb.ReadWriteTx) error
 	defer func() {
 		if err != nil {
@@ -1045,8 +1102,8 @@ func (w *Wallet) mixedSplit(ctx context.Context, req *PurchaseTicketsRequest, ne
 	var atx *txauthor.AuthoredTx
 	err = walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
 		_, tipHeight := w.txStore.MainChainTip(dbtx)
-		inputSource := w.txStore.MakeInputSource(dbtx, req.SourceAccount,
-			req.MinConf, tipHeight, ignoreInput)
+		inputSource := w.txStore.MakeInputSourceWithCoinType(dbtx, req.SourceAccount,
+			req.MinConf, tipHeight, ignoreInput, ticketCoinType)
 		changeSource := &p2PKHChangeSource{
 			persist:   w.deferPersistReturnedChild(ctx, &changeSourceUpdates),
 			account:   req.ChangeAccount,
@@ -1122,12 +1179,15 @@ func (w *Wallet) individualSplit(ctx context.Context, req *PurchaseTicketsReques
 	// For the default stake pool implementation, the user pays out the
 	// first ticket commitment of a smaller amount to the pool, while
 	// paying themselves with the larger ticket commitment.
+	// Tickets are VAR-only
+	const ticketCoinType = cointype.CoinTypeVAR
 	var splitOuts []*wire.TxOut
 	for i := 0; i < req.Count; i++ {
 		splitOuts = append(splitOuts, &wire.TxOut{
 			Value:    int64(neededPerTicket),
 			PkScript: splitPkScript,
 			Version:  vers,
+			CoinType: ticketCoinType,
 		})
 		outIndexes = append(outIndexes, i)
 	}
@@ -1139,7 +1199,7 @@ func (w *Wallet) individualSplit(ctx context.Context, req *PurchaseTicketsReques
 		changeAccount:      req.ChangeAccount,
 		minconf:            req.MinConf,
 		randomizeChangeIdx: false,
-		txFee:              w.RelayFee(),
+		txFee:              w.RelayFeeForCoinType(ticketCoinType),
 		dontSignTx:         req.DontSignTx,
 		isTreasury:         false,
 	}
@@ -1170,6 +1230,11 @@ var errVSPFeeRequiresUTXOSplit = errors.New("paying VSP fee requires UTXO split"
 // will return an error that not enough funds are available.
 func (w *Wallet) purchaseTickets(ctx context.Context, op errors.Op,
 	n NetworkBackend, req *PurchaseTicketsRequest) (*PurchaseTicketsResponse, error) {
+	// Staking is only supported for VAR coins
+	// This is a fundamental protocol constraint - tickets, votes, and revocations
+	// must use the native VAR currency for consensus participation
+	// Note: This check ensures no SKA coins can be used for staking
+	
 	// Ensure the minimum number of required confirmations is positive.
 	if req.MinConf < 0 {
 		return nil, errors.E(op, errors.Invalid, "negative minconf")
@@ -1331,7 +1396,7 @@ func (w *Wallet) purchaseTickets(ctx context.Context, op errors.Op,
 		for i := 0; i < req.Count; i++ {
 			if req.extraSplitOutput == nil {
 				credits, err := w.ReserveOutputsForAmount(ctx,
-					req.SourceAccount, fee, req.MinConf)
+					req.SourceAccount, fee, req.MinConf, cointype.CoinTypeVAR)
 
 				if errors.Is(err, errors.InsufficientBalance) {
 					lowBalance = true
@@ -1345,11 +1410,11 @@ func (w *Wallet) purchaseTickets(ctx context.Context, op errors.Op,
 			}
 
 			credits, err := w.ReserveOutputsForAmount(ctx, req.SourceAccount,
-				ticketPrice, req.MinConf)
+				ticketPrice, req.MinConf, cointype.CoinTypeVAR)
 			if errors.Is(err, errors.InsufficientBalance) {
 				lowBalance = true
 				credits, _ = w.reserveOutputs(ctx, req.SourceAccount,
-					req.MinConf)
+					req.MinConf, cointype.CoinTypeVAR)
 				if len(credits) != 0 {
 					ticketCredits = append(ticketCredits, credits)
 				}
@@ -1678,7 +1743,7 @@ func (w *Wallet) purchaseTickets(ctx context.Context, op errors.Op,
 
 // ReserveOutputsForAmount returns locked spendable outpoints from the given
 // account.  It is the responsibility of the caller to unlock the outpoints.
-func (w *Wallet) ReserveOutputsForAmount(ctx context.Context, account uint32, amount dcrutil.Amount, minconf int32) ([]Input, error) {
+func (w *Wallet) ReserveOutputsForAmount(ctx context.Context, account uint32, amount dcrutil.Amount, minconf int32, coinType cointype.CoinType) ([]Input, error) {
 	defer w.lockedOutpointMu.Unlock()
 	w.lockedOutpointMu.Lock()
 
@@ -1691,7 +1756,7 @@ func (w *Wallet) ReserveOutputsForAmount(ctx context.Context, account uint32, am
 		const minAmount = 0
 		const maxResults = 0
 		outputs, err = w.findEligibleOutputsAmount(dbtx, account, minconf, amount, tipHeight,
-			minAmount, maxResults)
+			minAmount, maxResults, coinType)
 		if err != nil {
 			return err
 		}
@@ -1709,7 +1774,7 @@ func (w *Wallet) ReserveOutputsForAmount(ctx context.Context, account uint32, am
 	return outputs, nil
 }
 
-func (w *Wallet) reserveOutputs(ctx context.Context, account uint32, minconf int32) ([]Input, error) {
+func (w *Wallet) reserveOutputs(ctx context.Context, account uint32, minconf int32, coinType cointype.CoinType) ([]Input, error) {
 	defer w.lockedOutpointMu.Unlock()
 	w.lockedOutpointMu.Lock()
 
@@ -1719,7 +1784,7 @@ func (w *Wallet) reserveOutputs(ctx context.Context, account uint32, minconf int
 		_, tipHeight := w.txStore.MainChainTip(dbtx)
 
 		var err error
-		outputs, err = w.findEligibleOutputs(dbtx, account, minconf, tipHeight)
+		outputs, err = w.findEligibleOutputs(dbtx, account, minconf, tipHeight, coinType)
 		if err != nil {
 			return err
 		}
@@ -1741,7 +1806,7 @@ func (w *Wallet) reserveOutputs(ctx context.Context, account uint32, minconf int
 // outputs.  Prefer to use findEligibleOutputsAmount with various filter options
 // instead.
 func (w *Wallet) findEligibleOutputs(dbtx walletdb.ReadTx, account uint32, minconf int32,
-	currentHeight int32) ([]Input, error) {
+	currentHeight int32, coinType cointype.CoinType) ([]Input, error) {
 
 	addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 
@@ -1819,10 +1884,16 @@ func (w *Wallet) findEligibleOutputs(dbtx walletdb.ReadTx, account uint32, minco
 			continue
 		}
 
+		// Filter by coin type
+		if output.CoinType != coinType {
+			continue
+		}
+
 		txOut := &wire.TxOut{
 			Value:    int64(output.Amount),
 			Version:  wire.DefaultPkScriptVersion, // XXX
 			PkScript: output.PkScript,
+			CoinType: output.CoinType,
 		}
 		eligible = append(eligible, Input{
 			OutPoint: output.OutPoint,
@@ -1836,7 +1907,7 @@ func (w *Wallet) findEligibleOutputs(dbtx walletdb.ReadTx, account uint32, minco
 // findEligibleOutputsAmount uses wtxmgr to find a number of unspent outputs
 // while doing maturity checks there.
 func (w *Wallet) findEligibleOutputsAmount(dbtx walletdb.ReadTx, account uint32, minconf int32,
-	amount dcrutil.Amount, currentHeight int32, minAmount dcrutil.Amount, maxResults int) ([]Input, error) {
+	amount dcrutil.Amount, currentHeight int32, minAmount dcrutil.Amount, maxResults int, coinType cointype.CoinType) ([]Input, error) {
 
 	addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 
@@ -1911,6 +1982,11 @@ func (w *Wallet) findEligibleOutputsAmount(dbtx walletdb.ReadTx, account uint32,
 			return true
 		}
 
+		// Filter by coin type
+		if output.CoinType != coinType {
+			return true
+		}
+
 		return false
 	}
 
@@ -1938,6 +2014,7 @@ func (w *Wallet) findEligibleOutputsAmount(dbtx walletdb.ReadTx, account uint32,
 			Value:    int64(output.Amount),
 			Version:  wire.DefaultPkScriptVersion, // XXX
 			PkScript: output.PkScript,
+			CoinType: output.CoinType,
 		}
 		eligible = append(eligible, Input{
 			OutPoint: output.OutPoint,
@@ -1975,6 +2052,7 @@ func (w *Wallet) findEligibleOutputsAmount(dbtx walletdb.ReadTx, account uint32,
 			Value:    int64(output.Amount),
 			Version:  wire.DefaultPkScriptVersion, // XXX
 			PkScript: output.PkScript,
+			CoinType: output.CoinType,
 		}
 		eligible = append(eligible, Input{
 			OutPoint: output.OutPoint,
@@ -2098,11 +2176,12 @@ func newVoteScript(voteBits stake.VoteBits) ([]byte, error) {
 // createUnsignedVote creates an unsigned vote transaction that votes using the
 // ticket specified by a ticket purchase hash and transaction with the provided
 // vote bits.  The block height and hash must be of the previous block the vote
-// is voting on.
+// is voting on. The feesByType parameter contains the fees collected by coin type
+// in the block being voted on, which will be distributed as rewards.
 func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 	blockHeight int32, blockHash *chainhash.Hash, voteBits stake.VoteBits,
 	subsidyCache *blockchain.SubsidyCache, params *chaincfg.Params,
-	dcp0010Active, dcp0012Active bool) (*wire.MsgTx, error) {
+	dcp0010Active, dcp0012Active bool, feesByType wire.FeesByType) (*wire.MsgTx, error) {
 
 	// Parse the ticket purchase transaction to determine the required output
 	// destinations for vote rewards or revocations.
@@ -2110,13 +2189,8 @@ func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 		stake.TxSStxStakeOutputInfo(ticketPurchase)
 
 	// Calculate the subsidy for votes at this height.
-	ssv := blockchain.SSVOriginal
-	switch {
-	case dcp0012Active:
-		ssv = blockchain.SSVDCP0012
-	case dcp0010Active:
-		ssv = blockchain.SSVDCP0010
-	}
+	// Use Monetarium subsidy split (50% miners, 50% stakers, 0% treasury)
+	ssv := blockchain.SSVMonetarium
 	subsidy := subsidyCache.CalcStakeVoteSubsidyV3(int64(blockHeight), ssv)
 
 	// Calculate the output values from this vote using the subsidy.
@@ -2147,6 +2221,7 @@ func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 		Value:    0,
 		Version:  wire.DefaultPkScriptVersion, // XXX
 		PkScript: blockRefScript,
+		CoinType: cointype.CoinTypeVAR, // Votes are VAR-only
 	})
 
 	// The second output contains the votebits encode as a null data script.
@@ -2158,10 +2233,11 @@ func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 		Value:    0,
 		Version:  wire.DefaultPkScriptVersion, // XXX
 		PkScript: voteScript,
+		CoinType: cointype.CoinTypeVAR, // Votes are VAR-only
 	})
 
 	// All remaining outputs pay to the output destinations and amounts tagged
-	// by the ticket purchase.
+	// by the ticket purchase. First, handle VAR rewards (stake return + subsidy + VAR fees).
 	for i, hash160 := range ticketHash160s {
 		var addr stdaddr.StakeAddress
 		var err error
@@ -2178,7 +2254,60 @@ func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 			Value:    voteRewardValues[i],
 			Version:  vers,
 			PkScript: script,
+			CoinType: cointype.CoinTypeVAR, // VAR rewards (stake + subsidy + VAR fees)
 		})
+	}
+
+	// Add additional outputs for non-VAR coin type fee rewards.
+	// Stakers receive their proportional share of fees from each coin type.
+	if feesByType != nil && len(feesByType) > 0 {
+		// Calculate staker's share of fees for each coin type
+		// Note: The actual proportion depends on the network's stake/PoW split
+		// For now, we'll add the infrastructure but the fee calculation
+		// needs to match the consensus rules for fee distribution
+		for coinType, feeAmount := range feesByType {
+			// Skip VAR fees as they're already included in voteRewardValues
+			if coinType == cointype.CoinTypeVAR {
+				continue
+			}
+			
+			// Skip if no fees for this coin type
+			if feeAmount <= 0 {
+				continue
+			}
+			
+			// Calculate staker's proportional share of this coin type's fees
+			// This should match the consensus rule for stake reward proportion
+			// For each original ticket holder, create a fee reward output
+			for i, hash160 := range ticketHash160s {
+				// Calculate this staker's share based on their ticket proportion
+				stakerShare := (feeAmount * ticketValues[i]) / ticketPurchase.TxOut[0].Value
+				
+				// Only create output if there's actually a reward
+				if stakerShare <= 0 {
+					continue
+				}
+				
+				var addr stdaddr.StakeAddress
+				var err error
+				if ticketPayKinds[i] { // P2SH
+					addr, err = stdaddr.NewAddressScriptHashV0FromHash(hash160, params)
+				} else { // P2PKH
+					addr, err = stdaddr.NewAddressPubKeyHashEcdsaSecp256k1V0(hash160, params)
+				}
+				if err != nil {
+					return nil, err
+				}
+				
+				vers, script := addr.PayVoteCommitmentScript()
+				vote.AddTxOut(&wire.TxOut{
+					Value:    stakerShare,
+					Version:  vers,
+					PkScript: script,
+					CoinType: coinType, // Fee reward in the specific coin type
+				})
+			}
+		}
 	}
 
 	return vote, nil

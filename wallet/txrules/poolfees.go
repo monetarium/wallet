@@ -57,13 +57,8 @@ func StakePoolTicketFee(stakeDiff dcrutil.Amount, relayFee dcrutil.Amount,
 		subsidyCache = blockchain.NewSubsidyCache(params)
 	})
 
-	ssv := blockchain.SSVOriginal
-	switch {
-	case dcp0012Active:
-		ssv = blockchain.SSVDCP0012
-	case dcp0010Active:
-		ssv = blockchain.SSVDCP0010
-	}
+	// Use Monetarium subsidy split (50% miners, 50% stakers, 0% treasury)
+	ssv := blockchain.SSVMonetarium
 	subsidy := subsidyCache.CalcStakeVoteSubsidyV3(int64(height), ssv)
 	for i := 0; i < adjs; i++ {
 		subsidy *= 100

@@ -629,6 +629,94 @@ func selectOwnedTickets(w *Wallet, dbtx walletdb.ReadTx, tickets []*chainhash.Ha
 	return owned
 }
 
+// calculateBlockFeesByCoinType calculates the total fees collected in a block,
+// grouped by coin type. This is used to distribute fee rewards to voters.
+// Returns nil if unable to calculate fees (e.g., SPV mode or error fetching block).
+func (w *Wallet) calculateBlockFeesByCoinType(ctx context.Context, blockHash *chainhash.Hash) (wire.FeesByType, error) {
+	n, err := w.NetworkBackend()
+	if err != nil {
+		return nil, err
+	}
+	
+	// Fetch the block
+	blocks, err := n.Blocks(ctx, []*chainhash.Hash{blockHash})
+	if err != nil || len(blocks) == 0 {
+		// Unable to fetch block (might be in SPV mode)
+		// Return nil to fall back to subsidy-only rewards
+		return nil, nil
+	}
+	block := blocks[0]
+	
+	// Initialize fee accumulator
+	feesByType := wire.NewFeesByType()
+	
+	// Process regular tree transactions (excluding coinbase at index 0)
+	for i := 1; i < len(block.Transactions); i++ {
+		tx := block.Transactions[i]
+		
+		// Skip SKA emission transactions (they have no fees)
+		if wire.IsSKAEmissionTransaction(tx) {
+			continue
+		}
+		
+		// Calculate total inputs
+		var totalIn int64
+		for _, txIn := range tx.TxIn {
+			totalIn += txIn.ValueIn
+		}
+		
+		// Calculate total outputs
+		var totalOut int64
+		for _, txOut := range tx.TxOut {
+			totalOut += txOut.Value
+		}
+		
+		// Fee = inputs - outputs
+		fee := totalIn - totalOut
+		if fee > 0 {
+			// Determine the coin type of this transaction
+			coinType := wire.GetPrimaryCoinType(tx)
+			feesByType.Add(coinType, fee)
+		}
+	}
+	
+	// Process stake tree transactions
+	for _, tx := range block.STransactions {
+		// Skip vote transactions (SSGen) and other special stake transactions
+		// as they don't pay fees in the traditional sense
+		if stake.IsSSGen(tx) || stake.IsSStx(tx) || stake.IsSSRtx(tx) {
+			continue
+		}
+		
+		// For other stake transactions, calculate fees
+		var totalIn int64
+		for _, txIn := range tx.TxIn {
+			totalIn += txIn.ValueIn
+		}
+		
+		var totalOut int64
+		for _, txOut := range tx.TxOut {
+			totalOut += txOut.Value
+		}
+		
+		fee := totalIn - totalOut
+		if fee > 0 {
+			coinType := wire.GetPrimaryCoinType(tx)
+			feesByType.Add(coinType, fee)
+		}
+	}
+	
+	// Now we have total fees by coin type
+	// Apply the staker proportion based on the configured subsidy split
+	// Get the proportions from the subsidy system
+	work, stakeVote, _, _ := blockchain.GetSubsidyProportions(blockchain.SSVMonetarium)
+	
+	// Calculate staker's share using the configured proportions
+	_, stakerFeesByType := wire.CalcFeeSplitByCoinType(feesByType, work, stakeVote)
+	
+	return stakerFeesByType, nil
+}
+
 // VoteOnOwnedTickets creates and publishes vote transactions for all owned
 // tickets in the winningTicketHashes slice if wallet voting is enabled.  The
 // vote is only valid when voting on the block described by the passed block
@@ -728,10 +816,18 @@ func (w *Wallet) VoteOnOwnedTickets(ctx context.Context, winningTicketHashes []*
 			// Deal with treasury votes
 			tspends := w.GetAllTSpends(ctx)
 
-			// Dealwith consensus votes
+			// Calculate block fees by coin type to properly distribute multi-coin rewards
+			feesByType, err := w.calculateBlockFeesByCoinType(ctx, blockHash)
+			if err != nil {
+				// Log but don't fail - fall back to VAR-only rewards
+				log.Debugf("Failed to calculate block fees by coin type: %v", err)
+				feesByType = nil
+			}
+
+			// Deal with consensus votes
 			vote, err := createUnsignedVote(ticketHash, ticketPurchase,
 				blockHeight, blockHash, ticketVoteBits, w.subsidyCache,
-				w.chainParams, dcp0010Active, dcp0012Active)
+				w.chainParams, dcp0010Active, dcp0012Active, feesByType)
 			if err != nil {
 				log.Errorf("Failed to create vote transaction for ticket "+
 					"hash %v: %v", ticketHash, err)

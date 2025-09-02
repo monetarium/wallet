@@ -15,6 +15,7 @@ import (
 	"decred.org/dcrwallet/v5/wallet/walletdb"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/chaincfg/v3"
+	"github.com/decred/dcrd/cointype"
 	"github.com/decred/dcrd/dcrec"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrutil/v4"
@@ -465,8 +466,9 @@ func (w *Wallet) MixAccount(ctx context.Context, changeAccount, mixAccount,
 		const targetAmount = 0
 		var minAmount = splitPoints[len(splitPoints)-1]
 		var maxResults = cap(w.mixSems.splitSems[0]) * len(splitPoints)
+		// Mixing is VAR-only (like staking)
 		credits, err = w.findEligibleOutputsAmount(dbtx, changeAccount, minconf,
-			targetAmount, tipHeight, minAmount, maxResults)
+			targetAmount, tipHeight, minAmount, maxResults, cointype.CoinTypeVAR)
 		return err
 	})
 	if err != nil {

@@ -1572,13 +1572,15 @@ func (w *Wallet) blockLocators(dbtx walletdb.ReadTx, sidechain []*BlockNode) ([]
 // If that many UTXOs can not be found, it will use the maximum it finds. This
 // will only compress UTXOs in the default account
 func (w *Wallet) Consolidate(ctx context.Context, inputs int, account uint32, address stdaddr.Address) (*chainhash.Hash, error) {
-	return w.compressWallet(ctx, "wallet.Consolidate", inputs, account, address)
+	// Default to VAR for consolidation
+	return w.compressWallet(ctx, "wallet.Consolidate", inputs, account, address, cointype.CoinTypeVAR)
 }
 
 // CreateMultisigTx creates and signs a multisig transaction.
 func (w *Wallet) CreateMultisigTx(ctx context.Context, account uint32, amount dcrutil.Amount,
 	pubkeys [][]byte, nrequired int8, minconf int32) (*CreatedTx, stdaddr.Address, []byte, error) {
-	return w.txToMultisig(ctx, "wallet.CreateMultisigTx", account, amount, pubkeys, nrequired, minconf)
+	// Default to VAR for multisig transactions
+	return w.txToMultisig(ctx, "wallet.CreateMultisigTx", account, amount, pubkeys, nrequired, minconf, cointype.CoinTypeVAR)
 }
 
 // PurchaseTicketsRequest describes the parameters for purchasing tickets.
@@ -4851,7 +4853,8 @@ func (w *Wallet) CreateVspPayment(ctx context.Context, tx *wire.MsgTx, fee dcrut
 	// outputs would already be reserved.
 	if len(tx.TxIn) == 0 {
 		const minconf = 1
-		inputs, err := w.ReserveOutputsForAmount(ctx, feeAcct, fee, minconf)
+		// VSP fees are paid in VAR (staking is VAR-only)
+		inputs, err := w.ReserveOutputsForAmount(ctx, feeAcct, fee, minconf, cointype.CoinTypeVAR)
 		if err != nil {
 			return fmt.Errorf("unable to reserve outputs: %w", err)
 		}
