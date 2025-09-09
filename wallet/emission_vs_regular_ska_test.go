@@ -39,7 +39,7 @@ func TestEmissionVsRegularSKATransactions(t *testing.T) {
 		}
 
 		// Simulate what SendOutputs does for fee calculation
-		coinType := txrules.GetPrimaryCoinTypeFromOutputs(regularSKAOutputs)
+		coinType := txrules.GetCoinTypeFromOutputs(regularSKAOutputs)
 		var feeRate dcrutil.Amount
 
 		if coinType == cointype.CoinTypeVAR {

@@ -83,8 +83,8 @@ func TestFeeForSerializeSizeWithChainParamsNoSKAFee(t *testing.T) {
 	}
 }
 
-// TestGetPrimaryCoinTypeFromOutputs tests coin type detection from transaction outputs.
-func TestGetPrimaryCoinTypeFromOutputs(t *testing.T) {
+// TestGetCoinTypeFromOutputs tests coin type detection from transaction outputs.
+func TestGetCoinTypeFromOutputs(t *testing.T) {
 	tests := []struct {
 		name     string
 		outputs  []*wire.TxOut
@@ -99,39 +99,38 @@ func TestGetPrimaryCoinTypeFromOutputs(t *testing.T) {
 			expected: cointype.CoinTypeVAR,
 		},
 		{
-			name: "Mixed outputs - SKA first",
+			name: "All SKA-1 outputs",
 			outputs: []*wire.TxOut{
 				{CoinType: cointype.CoinType(1), Value: 1000},
-				{CoinType: cointype.CoinTypeVAR, Value: 2000},
+				{CoinType: cointype.CoinType(1), Value: 2000},
 			},
 			expected: cointype.CoinType(1),
 		},
 		{
-			name: "Mixed outputs - VAR first",
+			name: "All SKA-2 outputs",
 			outputs: []*wire.TxOut{
-				{CoinType: cointype.CoinTypeVAR, Value: 1000},
-				{CoinType: cointype.CoinType(1), Value: 2000},
+				{CoinType: cointype.CoinType(2), Value: 1000},
+				{CoinType: cointype.CoinType(2), Value: 2000},
 			},
-			expected: cointype.CoinType(1), // Should return first non-VAR coin type
+			expected: cointype.CoinType(2),
 		},
 		{
-			name: "Multiple SKA types",
+			name: "Single output",
 			outputs: []*wire.TxOut{
-				{CoinType: cointype.CoinType(1), Value: 1000}, // SKA-1
-				{CoinType: cointype.CoinType(2), Value: 2000}, // SKA-2
+				{CoinType: cointype.CoinType(1), Value: 1000},
 			},
-			expected: cointype.CoinType(1), // Should return first non-VAR coin type
+			expected: cointype.CoinType(1),
 		},
 		{
-			name:     "No outputs",
-			outputs:  nil,
-			expected: cointype.CoinTypeVAR, // Default to VAR
+			name:     "Empty outputs",
+			outputs:  []*wire.TxOut{},
+			expected: cointype.CoinTypeVAR, // Default to VAR when no outputs
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := GetPrimaryCoinTypeFromOutputs(test.outputs)
+			actual := GetCoinTypeFromOutputs(test.outputs)
 			if actual != test.expected {
 				t.Errorf("Expected coin type %d, got %d", test.expected, actual)
 			}

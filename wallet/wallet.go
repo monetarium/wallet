@@ -4755,8 +4755,8 @@ func (w *Wallet) TotalReceivedForAddr(ctx context.Context, addr stdaddr.Address,
 func (w *Wallet) SendOutputs(ctx context.Context, outputs []*wire.TxOut, account, changeAccount uint32, minconf int32) (*chainhash.Hash, error) {
 	const op errors.Op = "wallet.SendOutputs"
 
-	// Determine the primary coin type from outputs for coin-type-aware fee calculation
-	coinType := txrules.GetPrimaryCoinTypeFromOutputs(outputs)
+	// Determine the coin type from outputs for coin-type-aware fee calculation
+	coinType := txrules.GetCoinTypeFromOutputs(outputs)
 
 	// Calculate appropriate fee rate based on coin type using user-configured fees
 	txFeeRate := w.RelayFeeForCoinType(coinType)

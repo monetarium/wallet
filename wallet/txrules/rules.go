@@ -114,13 +114,11 @@ func sumOutputValues(outputs []*wire.TxOut) (totalOutput dcrutil.Amount) {
 	return totalOutput
 }
 
-// FeeForSerializeSizeDualCoin calculates the required fee for a transaction
-// based on coin type. Each coin type pays fees in its own coin.
-// VAR transactions: Pay fees in VAR
-// SKA transactions: Pay fees in their respective SKA coin type (SKA-1 pays in SKA-1, etc.)
-// SKA emission transactions: Zero fees (handled separately - coin doesn't exist yet)
+// FeeForSerializeSizeDualCoin calculates the required fee for a transaction.
+// All coin types (VAR and SKA) pay fees in their own coin type.
+// The fee calculation is the same for all coin types.
 func FeeForSerializeSizeDualCoin(relayFeePerKb dcrutil.Amount, txSerializeSize int, coinType cointype.CoinType) dcrutil.Amount {
-	// All coin types (VAR and SKA) pay fees using the same calculation
+	// All coin types use the same fee calculation
 	// The fee is paid in the same coin type as the transaction
 	return FeeForSerializeSize(relayFeePerKb, txSerializeSize)
 }
@@ -145,23 +143,21 @@ func FeeForSerializeSizeWithChainParams(relayFeePerKb dcrutil.Amount, txSerializ
 	}
 }
 
-// GetPrimaryCoinTypeFromOutputs determines the primary coin type of transaction outputs.
-// Returns the first non-VAR coin type found, or VAR if all outputs are VAR.
-// This matches the logic used in the blockchain fee collection.
-func GetPrimaryCoinTypeFromOutputs(outputs []*wire.TxOut) cointype.CoinType {
-	for _, output := range outputs {
-		if output.CoinType != cointype.CoinTypeVAR {
-			return output.CoinType
-		}
+// GetCoinTypeFromOutputs determines the coin type of transaction outputs.
+// Since transactions cannot mix coin types (all outputs must have the same coin type),
+// this returns the coin type of the first output, or VAR if there are no outputs.
+func GetCoinTypeFromOutputs(outputs []*wire.TxOut) cointype.CoinType {
+	if len(outputs) == 0 {
+		return cointype.CoinTypeVAR
 	}
-	return cointype.CoinTypeVAR
+	// All outputs in a transaction must have the same coin type,
+	// so we can simply return the coin type of the first output
+	return outputs[0].CoinType
 }
 
-// IsDustAmountDualCoin determines dust for dual-coin system.
-// All coin types use the same dust calculation since all pay fees.
+// IsDustAmountDualCoin determines dust for the dual-coin system.
+// All coin types use the same dust calculation.
 func IsDustAmountDualCoin(amount dcrutil.Amount, scriptSize int, relayFeePerKb dcrutil.Amount, coinType cointype.CoinType) bool {
-	// All coin types (VAR and SKA) use the same dust calculation
-	// since they all pay fees using the same calculation
 	return IsDustAmount(amount, scriptSize, relayFeePerKb)
 }
 

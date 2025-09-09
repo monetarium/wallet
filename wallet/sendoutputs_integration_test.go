@@ -44,6 +44,16 @@ func TestSendOutputsFeeCalculation(t *testing.T) {
 			description:      "VAR transactions should use configured relay fee",
 		},
 		{
+			name: "Multiple VAR outputs",
+			outputs: []*wire.TxOut{
+				{Value: 100000, CoinType: cointype.CoinTypeVAR},
+				{Value: 50000, CoinType: cointype.CoinTypeVAR},
+			},
+			expectedCoinType: cointype.CoinTypeVAR,
+			expectedFeeRate:  varRelayFee, // Should use VAR relay fee
+			description:      "VAR transactions with multiple outputs should use VAR fee rate",
+		},
+		{
 			name: "SKA transaction",
 			outputs: []*wire.TxOut{
 				{Value: 50000, CoinType: cointype.CoinType(1)},
@@ -53,21 +63,21 @@ func TestSendOutputsFeeCalculation(t *testing.T) {
 			description:      "SKA transactions should use chain-specific fee rate",
 		},
 		{
-			name: "Mixed outputs - SKA preferred",
+			name: "Multiple SKA outputs",
 			outputs: []*wire.TxOut{
-				{Value: 100000, CoinType: cointype.CoinTypeVAR},
+				{Value: 100000, CoinType: cointype.CoinType(1)},
 				{Value: 50000, CoinType: cointype.CoinType(1)},
 			},
 			expectedCoinType: cointype.CoinType(1),
-			expectedFeeRate:  1000, // Should detect SKA and use SKA fee rate
-			description:      "Mixed transactions should use first non-VAR coin type fee rate",
+			expectedFeeRate:  1000, // Should use SKA chain params fee rate
+			description:      "SKA transactions with multiple outputs should use SKA fee rate",
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Test coin type detection (this is what SendOutputs now does)
-			detectedCoinType := txrules.GetPrimaryCoinTypeFromOutputs(test.outputs)
+			detectedCoinType := txrules.GetCoinTypeFromOutputs(test.outputs)
 			if detectedCoinType != test.expectedCoinType {
 				t.Errorf("Coin type detection failed: expected %d, got %d",
 					test.expectedCoinType, detectedCoinType)
@@ -109,7 +119,7 @@ func TestSKATransactionNoLongerFails(t *testing.T) {
 	}
 
 	// Simulate what SendOutputs does now
-	coinType := txrules.GetPrimaryCoinTypeFromOutputs(skaOutputs)
+	coinType := txrules.GetCoinTypeFromOutputs(skaOutputs)
 	var feeRate dcrutil.Amount
 
 	if coinType == cointype.CoinTypeVAR {
@@ -161,7 +171,7 @@ func TestFixVerifiesOriginalProblem(t *testing.T) {
 	}
 
 	// What SendOutputs does now:
-	coinType := txrules.GetPrimaryCoinTypeFromOutputs(skaOutputs)
+	coinType := txrules.GetCoinTypeFromOutputs(skaOutputs)
 	feeRate := dcrutil.Amount(chainParams.SKAMinRelayTxFee)
 
 	// Calculate fee for a typical transaction size

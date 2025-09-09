@@ -17,7 +17,7 @@ func TestDualCoinTxRules(t *testing.T) {
 		{Value: 100000000, CoinType: cointype.CoinTypeVAR}, // 1 VAR
 	}
 
-	coinType := txrules.GetPrimaryCoinTypeFromOutputs(varOutputs)
+	coinType := txrules.GetCoinTypeFromOutputs(varOutputs)
 	if coinType != cointype.CoinTypeVAR {
 		t.Errorf("Expected VAR coin type (0), got %d", coinType)
 	}
@@ -27,21 +27,21 @@ func TestDualCoinTxRules(t *testing.T) {
 		{Value: 200000000, CoinType: cointype.CoinType(1)}, // 2 SKA-1
 	}
 
-	coinType = txrules.GetPrimaryCoinTypeFromOutputs(skaOutputs)
+	coinType = txrules.GetCoinTypeFromOutputs(skaOutputs)
 	if coinType != cointype.CoinType(1) {
 		t.Errorf("Expected SKA-1 coin type (1), got %d", coinType)
 	}
 
-	// Test case 3: Mixed outputs should return first non-VAR coin type
-	mixedOutputs := []*wire.TxOut{
-		{Value: 100000000, CoinType: cointype.CoinTypeVAR}, // 1 VAR
-		{Value: 200000000, CoinType: cointype.CoinType(2)}, // 2 SKA-2
-	}
+	// Test case 3: Empty outputs should return VAR as default
+	emptyOutputs := []*wire.TxOut{}
 
-	coinType = txrules.GetPrimaryCoinTypeFromOutputs(mixedOutputs)
-	if coinType != cointype.CoinType(2) {
-		t.Errorf("Expected SKA-2 coin type (2), got %d", coinType)
+	coinType = txrules.GetCoinTypeFromOutputs(emptyOutputs)
+	if coinType != cointype.CoinTypeVAR {
+		t.Errorf("Expected VAR coin type (0) for empty outputs, got %d", coinType)
 	}
+	
+	// Note: Mixed coin types in outputs are no longer allowed in transactions.
+	// All outputs must have the same coin type after SSFee implementation.
 }
 
 // TestDualCoinFeeCalculation tests the fee calculation for different coin types
