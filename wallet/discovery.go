@@ -18,6 +18,7 @@ import (
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/gcs/v4/blockcf2"
 	hd "github.com/decred/dcrd/hdkeychain/v3"
+	"github.com/decred/dcrd/txscript/v4"
 	"github.com/decred/dcrd/txscript/v4/stdaddr"
 	"github.com/decred/dcrd/wire"
 	"github.com/jrick/bitset"
@@ -61,6 +62,16 @@ func blockCommitments(block *wire.MsgBlock) map[string]struct{} {
 			for _, out := range tx.TxOut {
 				script := out.PkScript[1:] // Slice off stake opcode
 				c[string(script)] = struct{}{}
+			}
+		case stake.TxTypeSSFee: // Fee distribution
+			// SSFee outputs (except OP_RETURN) are rewards to voters
+			for _, out := range tx.TxOut {
+				// Skip OP_RETURN outputs - they can't be spent
+				if len(out.PkScript) > 0 && out.PkScript[0] == txscript.OP_RETURN {
+					continue
+				}
+				// SSFee outputs don't have stake opcodes, use script directly
+				c[string(out.PkScript)] = struct{}{}
 			}
 		}
 	}

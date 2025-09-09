@@ -684,7 +684,8 @@ func (w *Wallet) calculateBlockFeesByCoinType(ctx context.Context, blockHash *ch
 	for _, tx := range block.STransactions {
 		// Skip vote transactions (SSGen) and other special stake transactions
 		// as they don't pay fees in the traditional sense
-		if stake.IsSSGen(tx) || stake.IsSStx(tx) || stake.IsSSRtx(tx) {
+		// SSFee transactions also don't pay fees - they distribute fees
+		if stake.IsSSGen(tx) || stake.IsSStx(tx) || stake.IsSSRtx(tx) || stake.IsSSFee(tx) {
 			continue
 		}
 		

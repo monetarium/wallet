@@ -2588,6 +2588,8 @@ func listTransactions(tx walletdb.ReadTx, details *udb.TxDetails, addrMgr *udb.M
 		txTypeStr = types.LTTTVote
 	case stake.TxTypeSSRtx:
 		txTypeStr = types.LTTTRevocation
+	case stake.TxTypeSSFee:
+		txTypeStr = types.LTTTRegular // Intentionally mapped to Regular for RPC compatibility
 	}
 
 	// Fee can only be determined if every input is a debit.
@@ -3710,6 +3712,12 @@ func (w *Wallet) ListUnspent(ctx context.Context, minconf, maxconf int32, addres
 				}
 			case stake.TxTypeSSRtx:
 				// All outputs for SSRtx tx are only spendable
+				// after coinbase maturity many blocks.
+				if !coinbaseMatured(w.chainParams, details.Height(), tipHeight) {
+					continue
+				}
+			case stake.TxTypeSSFee:
+				// All spendable outputs (non-OP_RETURN) for SSFee tx are only spendable
 				// after coinbase maturity many blocks.
 				if !coinbaseMatured(w.chainParams, details.Height(), tipHeight) {
 					continue

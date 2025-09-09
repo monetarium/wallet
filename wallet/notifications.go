@@ -456,11 +456,19 @@ const (
 	// TransactionTypeRevocation transaction type for all transactions that consume a
 	// ticket, but offer no stake base reward.
 	TransactionTypeRevocation
+
+	// TransactionTypeSSFee transaction type for stake fee distribution transactions
+	// that distribute non-VAR coin fees to voters.
+	// Note: This type is mapped to REGULAR in RPC responses for backward compatibility.
+	TransactionTypeSSFee
 )
 
 // TxTransactionType returns the correct TransactionType given a wire transaction
 func TxTransactionType(tx *wire.MsgTx) TransactionType {
-	if compat.IsEitherCoinBaseTx(tx) {
+	// Check for SSFee before coinbase since both have null inputs
+	if stake.IsSSFee(tx) {
+		return TransactionTypeSSFee
+	} else if compat.IsEitherCoinBaseTx(tx) {
 		return TransactionTypeCoinbase
 	} else if stake.IsSStx(tx) {
 		return TransactionTypeTicketPurchase
