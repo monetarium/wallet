@@ -2176,12 +2176,11 @@ func newVoteScript(voteBits stake.VoteBits) ([]byte, error) {
 // createUnsignedVote creates an unsigned vote transaction that votes using the
 // ticket specified by a ticket purchase hash and transaction with the provided
 // vote bits.  The block height and hash must be of the previous block the vote
-// is voting on. The feesByType parameter contains the fees collected by coin type
-// in the block being voted on, which will be distributed as rewards.
+// is voting on.
 func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 	blockHeight int32, blockHash *chainhash.Hash, voteBits stake.VoteBits,
 	subsidyCache *blockchain.SubsidyCache, params *chaincfg.Params,
-	dcp0010Active, dcp0012Active bool, feesByType wire.FeesByType) (*wire.MsgTx, error) {
+	dcp0010Active, dcp0012Active bool) (*wire.MsgTx, error) {
 
 	// Parse the ticket purchase transaction to determine the required output
 	// destinations for vote rewards or revocations.
@@ -2258,57 +2257,10 @@ func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 		})
 	}
 
-	// Add additional outputs for non-VAR coin type fee rewards.
-	// Stakers receive their proportional share of fees from each coin type.
-	if feesByType != nil && len(feesByType) > 0 {
-		// Calculate staker's share of fees for each coin type
-		// Note: The actual proportion depends on the network's stake/PoW split
-		// For now, we'll add the infrastructure but the fee calculation
-		// needs to match the consensus rules for fee distribution
-		for coinType, feeAmount := range feesByType {
-			// Skip VAR fees as they're already included in voteRewardValues
-			if coinType == cointype.CoinTypeVAR {
-				continue
-			}
-			
-			// Skip if no fees for this coin type
-			if feeAmount <= 0 {
-				continue
-			}
-			
-			// Calculate staker's proportional share of this coin type's fees
-			// This should match the consensus rule for stake reward proportion
-			// For each original ticket holder, create a fee reward output
-			for i, hash160 := range ticketHash160s {
-				// Calculate this staker's share based on their ticket proportion
-				stakerShare := (feeAmount * ticketValues[i]) / ticketPurchase.TxOut[0].Value
-				
-				// Only create output if there's actually a reward
-				if stakerShare <= 0 {
-					continue
-				}
-				
-				var addr stdaddr.StakeAddress
-				var err error
-				if ticketPayKinds[i] { // P2SH
-					addr, err = stdaddr.NewAddressScriptHashV0FromHash(hash160, params)
-				} else { // P2PKH
-					addr, err = stdaddr.NewAddressPubKeyHashEcdsaSecp256k1V0(hash160, params)
-				}
-				if err != nil {
-					return nil, err
-				}
-				
-				vers, script := addr.PayVoteCommitmentScript()
-				vote.AddTxOut(&wire.TxOut{
-					Value:    stakerShare,
-					Version:  vers,
-					PkScript: script,
-					CoinType: coinType, // Fee reward in the specific coin type
-				})
-			}
-		}
-	}
+	// Note: Non-VAR (SKA) coin type fee rewards are distributed through separate
+	// SSFee transactions created by the mining code, not through vote outputs.
+	// Votes only contain VAR rewards (stake return + subsidy + VAR fees).
+	// See dcrd/internal/mining/mining.go createSSFeeTx() for SKA fee distribution.
 
 	return vote, nil
 }

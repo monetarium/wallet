@@ -313,7 +313,7 @@ func newVoteScript(voteBits stake.VoteBits) ([]byte, error) {
 // is voting on.
 func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 	blockHeight int32, blockHash *chainhash.Hash, voteBits stake.VoteBits,
-	subsidyCache *blockchain.SubsidyCache, params *chaincfg.Params, feesByType wire.FeesByType) (*wire.MsgTx, error) {
+	subsidyCache *blockchain.SubsidyCache, params *chaincfg.Params) (*wire.MsgTx, error) {
 
 	// Parse the ticket purchase transaction to determine the required output
 	// destinations for vote rewards or revocations.
