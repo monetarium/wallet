@@ -1507,7 +1507,7 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 
 		v := valueUnminedCredit(dcrutil.Amount(rec.MsgTx.TxOut[index].Value),
 			change, opCode, isCoinbase, hasExpiry, scrType, uint32(scrLoc),
-			uint32(scrLen), account, DBVersion)
+			uint32(scrLen), account, rec.MsgTx.TxOut[index].CoinType, DBVersion)
 		return true, putRawUnminedCredit(ns, k, v)
 	}
 
@@ -2129,7 +2129,7 @@ func (s *Store) Rollback(dbtx walletdb.ReadWriteTx, height int32) error {
 				outPointKey := canonicalOutPoint(&rec.Hash, uint32(i))
 				unminedCredVal := valueUnminedCredit(amt, change, opCode,
 					isCoinbase, hasExpiry, scrType, uint32(scrLoc), uint32(scrLen),
-					acct, DBVersion)
+					acct, output.CoinType, DBVersion)
 				err = putRawUnminedCredit(ns, outPointKey, unminedCredVal)
 				if err != nil {
 					return err

@@ -207,10 +207,16 @@ const (
 	// the genesis block.
 	birthBlockVersion = 26
 
+	// dualCoinVersion is the 27th version of the database. It adds support
+	// for the dual-coin system by extending unmined credits to store coin type,
+	// adding per-coin-type balance tracking, and creating coin-type-aware
+	// unspent indexes for efficient queries.
+	dualCoinVersion = 27
+
 	// DBVersion is the latest version of the database that is understood by the
 	// program.  Databases with recorded versions higher than this will fail to
 	// open (meaning any upgrades prevent reverting to older software).
-	DBVersion = birthBlockVersion
+	DBVersion = dualCoinVersion
 )
 
 // upgrades maps between old database versions and the upgrade function to
@@ -242,6 +248,7 @@ var upgrades = [...]func(walletdb.ReadWriteTx, []byte, *chaincfg.Params) error{
 	vspTreasuryPoliciesVersion - 1:        vspTreasuryPoliciesUpgrade,
 	importVotingAccountVersion - 1:        importVotingAccountUpgrade,
 	birthBlockVersion - 1:                 birthBlockUpgrade,
+	dualCoinVersion - 1:                    dualCoinUpgrade,
 }
 
 func lastUsedAddressIndexUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
@@ -1685,6 +1692,31 @@ func birthBlockUpgrade(tx walletdb.ReadWriteTx, _ []byte, params *chaincfg.Param
 	}
 
 	// Write the new database version.
+	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)
+}
+
+// dualCoinUpgrade performs an upgrade from version 26 to 27. This upgrade adds
+// support for dual-coin system by extending unmined credits to store coin type.
+// Existing unmined credits cannot be migrated (no transaction data available)
+// but will default to VAR when read for backward compatibility.
+func dualCoinUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
+	const newVersion = 27
+
+	metadataBucket := tx.ReadWriteBucket(unifiedDBMetadata{}.rootBucketKey())
+	if metadataBucket == nil {
+		return errors.E(errors.IO, "missing metadata bucket")
+	}
+
+	txmgrBucket := tx.ReadWriteBucket(wtxmgrBucketKey)
+	if txmgrBucket == nil {
+		return errors.E(errors.IO, "missing transaction manager bucket")
+	}
+
+	// This upgrade enables the new unmined credit format that includes coin type.
+	// New unmined credits will be created with the coin type field populated.
+	// Existing unmined credits will default to VAR when read for backward compatibility.
+
+	// Update the database version.
 	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)
 }
 

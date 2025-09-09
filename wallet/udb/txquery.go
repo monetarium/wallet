@@ -13,6 +13,7 @@ import (
 	"decred.org/dcrwallet/v5/wallet/walletdb"
 	"github.com/decred/dcrd/blockchain/stake/v5"
 	"github.com/decred/dcrd/chaincfg/chainhash"
+	"github.com/decred/dcrd/cointype"
 	"github.com/decred/dcrd/dcrutil/v4"
 	"github.com/decred/dcrd/wire"
 )
@@ -28,14 +29,16 @@ type CreditRecord struct {
 	OpCode     uint8
 	IsCoinbase bool
 	HasExpiry  bool
+	CoinType   cointype.CoinType // Added for dual-coin support
 }
 
 // DebitRecord contains metadata regarding a transaction debit for a known
 // transaction.  Further details may be looked up by indexing a wire.MsgTx.TxIn
 // with the Index field.
 type DebitRecord struct {
-	Amount dcrutil.Amount
-	Index  uint32
+	Amount   dcrutil.Amount
+	Index    uint32
+	CoinType cointype.CoinType // Added for dual-coin support: tracks spent coin type
 }
 
 // TxDetails is intended to provide callers with access to rich details

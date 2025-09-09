@@ -294,3 +294,82 @@ func validateCoinTypeSeparation(inputTypes, outputTypes []cointype.CoinType) boo
 
 	return true
 }
+
+// TestUnminedCreditCoinType tests that unmined credits properly store and retrieve coin types.
+func TestUnminedCreditCoinType(t *testing.T) {
+	// Test data
+	tests := []struct {
+		name     string
+		coinType cointype.CoinType
+		amount   dcrutil.Amount
+	}{
+		{
+			name:     "VAR unmined credit",
+			coinType: cointype.CoinTypeVAR,
+			amount:   100000000, // 1 VAR
+		},
+		{
+			name:     "SKA-1 unmined credit",
+			coinType: cointype.CoinType(1),
+			amount:   50000000, // 0.5 SKA
+		},
+		{
+			name:     "SKA-2 unmined credit",
+			coinType: cointype.CoinType(2),
+			amount:   25000000, // 0.25 SKA
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Create unmined credit value with coin type
+			v := valueUnminedCredit(
+				test.amount,
+				false,           // not change
+				0,               // opCode
+				false,           // not coinbase
+				false,           // no expiry
+				scriptTypeP2PKH, // script type
+				0,               // script location
+				25,              // script length
+				0,               // account
+				test.coinType,   // coin type
+				DBVersion,       // db version
+			)
+
+			// Verify the value has the correct size
+			if len(v) != unconfValueSize {
+				t.Errorf("Expected unmined credit size %d, got %d", unconfValueSize, len(v))
+			}
+
+			// Fetch the coin type from the value
+			fetchedCoinType := fetchRawUnminedCreditCoinType(v)
+			if fetchedCoinType != test.coinType {
+				t.Errorf("Expected coin type %d, got %d", test.coinType, fetchedCoinType)
+			}
+
+			// Fetch the amount and verify it's correct
+			fetchedAmount, err := fetchRawUnminedCreditAmount(v)
+			if err != nil {
+				t.Fatalf("Failed to fetch amount: %v", err)
+			}
+			if fetchedAmount != test.amount {
+				t.Errorf("Expected amount %d, got %d", test.amount, fetchedAmount)
+			}
+		})
+	}
+}
+
+// TestUnminedCreditBackwardCompatibility tests that old unmined credits
+// without coin type default to VAR.
+func TestUnminedCreditBackwardCompatibility(t *testing.T) {
+	// Create a legacy unmined credit value (22 bytes, no coin type)
+	legacyValue := make([]byte, 22)
+	byteOrder.PutUint64(legacyValue, uint64(100000000)) // 1 VAR
+
+	// Fetch coin type should default to VAR for backward compatibility
+	coinType := fetchRawUnminedCreditCoinType(legacyValue)
+	if coinType != cointype.CoinTypeVAR {
+		t.Errorf("Legacy unmined credit should default to VAR, got coin type %d", coinType)
+	}
+}

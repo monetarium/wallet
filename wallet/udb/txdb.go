@@ -922,7 +922,7 @@ func fetchRawCreditCoinType(v []byte) cointype.CoinType {
 	coinType := cointype.CoinType(v[coinTypeBytePosition]) // Read CoinType from end of record
 
 	// Validate coin type range - corrupted data could have invalid values
-	if coinType > 255 {
+	if coinType > cointype.CoinTypeMax {
 		// Log warning but return VAR as safe fallback for corrupted data
 		// TODO: Consider adding proper logging infrastructure
 		return cointype.CoinTypeVAR
@@ -1074,6 +1074,7 @@ func (it *creditIterator) readElem() error {
 	it.elem.OpCode = fetchRawCreditTagOpCode(it.cv)
 	it.elem.IsCoinbase = fetchRawCreditIsCoinbase(it.cv)
 	it.elem.HasExpiry = fetchRawCreditHasExpiry(it.cv, it.dbVersion)
+	it.elem.CoinType = fetchRawCreditCoinType(it.cv)
 
 	return nil
 }
@@ -1320,6 +1321,7 @@ func deleteRawDebit(ns walletdb.ReadWriteBucket, k []byte) error {
 //	        // Handle error
 //	}
 type debitIterator struct {
+	ns     walletdb.ReadBucket         // Namespace for looking up credits
 	c      walletdb.ReadWriteCursor // Set to nil after final iteration
 	prefix []byte
 	ck     []byte
@@ -1330,7 +1332,7 @@ type debitIterator struct {
 
 func makeReadDebitIterator(ns walletdb.ReadBucket, prefix []byte) debitIterator {
 	c := ns.NestedReadBucket(bucketDebits).ReadCursor()
-	return debitIterator{c: readCursor{c}, prefix: prefix}
+	return debitIterator{ns: ns, c: readCursor{c}, prefix: prefix}
 }
 
 func (it *debitIterator) readElem() error {
@@ -1342,6 +1344,17 @@ func (it *debitIterator) readElem() error {
 	}
 	it.elem.Index = byteOrder.Uint32(it.ck[68:72])
 	it.elem.Amount = dcrutil.Amount(byteOrder.Uint64(it.cv))
+	
+	// Extract coin type from the referenced credit
+	// Debit value contains credit key at bytes [8:80]
+	creditKey := it.cv[8:80]
+	if creditVal := existsRawCredit(it.ns, creditKey); creditVal != nil {
+		it.elem.CoinType = fetchRawCreditCoinType(creditVal)
+	} else {
+		// If credit not found, default to VAR for backward compatibility
+		it.elem.CoinType = cointype.CoinTypeVAR
+	}
+	
 	return nil
 }
 
@@ -1483,12 +1496,13 @@ const (
 
 	// unconfValueSize is the total size of an unconfirmed credit
 	// value in bytes (version 2).
-	unconfValueSize = 22
+	// Updated for dual-coin support to add 1 byte for CoinType.
+	unconfValueSize = 23
 )
 
 func valueUnminedCredit(amount dcrutil.Amount, change bool, opCode uint8,
 	isCoinbase, hasExpiry bool, scrType scriptType, scrLoc, scrLen,
-	account, dbVersion uint32) []byte {
+	account uint32, coinType cointype.CoinType, dbVersion uint32) []byte {
 
 	v := make([]byte, unconfValueSize)
 	byteOrder.PutUint64(v, uint64(amount))
@@ -1513,6 +1527,7 @@ func valueUnminedCredit(amount dcrutil.Amount, change bool, opCode uint8,
 	byteOrder.PutUint32(v[10:14], scrLoc)
 	byteOrder.PutUint32(v[14:18], scrLen)
 	byteOrder.PutUint32(v[18:22], account)
+	v[22] = byte(coinType) // Store CoinType at end of record
 
 	return v
 }
@@ -1594,9 +1609,17 @@ func fetchRawUnminedCreditAccount(v []byte) (uint32, error) {
 // For backward compatibility, defaults to VAR (0) since unmined credits
 // currently don't store coin type (this will be enhanced in future versions).
 func fetchRawUnminedCreditCoinType(v []byte) cointype.CoinType {
-	// TODO: In future versions, we should extend unmined credit structure
-	// to store coin type. For now, default to VAR for backward compatibility.
-	return cointype.CoinTypeVAR
+	// For backward compatibility, default to VAR if credit is from old version
+	if len(v) < unconfValueSize {
+		return cointype.CoinTypeVAR
+	}
+	// Read CoinType from end of record
+	coinType := cointype.CoinType(v[22])
+	// Validate coin type range - corrupted data could have invalid values
+	if coinType > cointype.CoinTypeMax {
+		return cointype.CoinTypeVAR
+	}
+	return coinType
 }
 
 func existsRawUnminedCredit(ns walletdb.ReadBucket, k []byte) []byte {
