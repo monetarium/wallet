@@ -2414,7 +2414,7 @@ func (s *Store) UnspentOutputCount(dbtx walletdb.ReadTx, coinType *cointype.Coin
 
 	// Count for all coin types
 	totalCount := 0
-	for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+	for _, ct := range s.getActiveSKACoinTypes() {
 		bucketName := bucketUnspentForCoinType(ct)
 		bucket := ns.NestedReadBucket(bucketName)
 		if bucket != nil {
@@ -2422,14 +2422,6 @@ func (s *Store) UnspentOutputCount(dbtx walletdb.ReadTx, coinType *cointype.Coin
 		}
 	}
 	return totalCount
-}
-
-// randomUTXO is deprecated - use randomUTXOForCoinType instead.
-// This function remains only for backward compatibility and will be removed.
-// It defaults to searching only VAR (coinType=0) UTXOs.
-func (s *Store) randomUTXO(dbtx walletdb.ReadTx, skip func(k, v []byte) bool) (k, v []byte) {
-	// Default to VAR coin type for backward compatibility
-	return s.randomUTXOForCoinType(dbtx, cointype.CoinTypeVAR, skip)
 }
 
 // randomUTXOForCoinType returns a random unspent output for a specific coin type.
