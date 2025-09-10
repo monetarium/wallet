@@ -12,6 +12,7 @@ import (
 
 	_ "decred.org/dcrwallet/v5/wallet/internal/bdb"
 	"decred.org/dcrwallet/v5/wallet/walletdb"
+	"github.com/decred/dcrd/cointype"
 	"github.com/decred/dcrd/dcrutil/v4"
 	gcs2 "github.com/decred/dcrd/gcs/v4"
 	"github.com/decred/dcrd/wire"
@@ -127,7 +128,7 @@ func TestStakeInvalidationOfTip(t *testing.T) {
 			t.Errorf("Wrong balance: expected %v got %v",
 				dcrutil.Amount(block2Tx.TxOut[0].Value), bal)
 		}
-		credits, err := s.UnspentOutputs(dbtx)
+		credits, err := s.UnspentOutputs(dbtx, cointype.CoinTypeVAR)
 		if err != nil {
 			return err
 		}
@@ -164,7 +165,7 @@ func TestStakeInvalidationOfTip(t *testing.T) {
 		if bal.Total != dcrutil.Amount(block1Tx.TxOut[0].Value) {
 			t.Errorf("Wrong balance: expected %v got %v", dcrutil.Amount(block1Tx.TxOut[0].Value), bal)
 		}
-		credits, err = s.UnspentOutputs(dbtx)
+		credits, err = s.UnspentOutputs(dbtx, cointype.CoinTypeVAR)
 		if err != nil {
 			return err
 		}

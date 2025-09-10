@@ -375,16 +375,25 @@ func TestSSFeeInUnspentOutputs(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Simulate policy filtering
-			policy := OutputSelectionPolicy{
-				RequiredConfirmations: 1,
-				CoinType:             test.policyCoinType,
+			var policy OutputSelectionPolicy
+			if test.policyCoinType != nil {
+				policy = OutputSelectionPolicy{
+					RequiredConfirmations: 1,
+					CoinType:             *test.policyCoinType,
+				}
+			} else {
+				// When no specific coin type, default to VAR
+				policy = OutputSelectionPolicy{
+					RequiredConfirmations: 1,
+					CoinType:             cointype.CoinTypeVAR,
+				}
 			}
 			
 			// Check maturity
 			mature := coinbaseMatured(params, test.outputHeight, test.tipHeight)
 			
-			// Check coin type filter
-			coinTypeMatch := policy.CoinType == nil || *policy.CoinType == test.outputCoinType
+			// Check coin type filter  
+			coinTypeMatch := test.policyCoinType == nil || policy.CoinType == test.outputCoinType
 			
 			// Check amount filter
 			amountMatch := dcrutil.Amount(test.outputValue) >= test.policyMinAmount

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"decred.org/dcrwallet/v5/wallet/walletdb"
+	"github.com/decred/dcrd/cointype"
 	"github.com/decred/dcrd/dcrutil/v4"
 	"github.com/decred/dcrd/wire"
 )
@@ -200,7 +201,7 @@ func Example_basicUsage(t *testing.T) {
 		}
 
 		// Fetch unspent outputs.
-		utxos, err := s.UnspentOutputs(ns)
+		utxos, err := s.UnspentOutputs(tx, cointype.CoinTypeVAR)
 		if err != nil {
 			t.Fatal(err)
 		}

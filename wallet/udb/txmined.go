@@ -181,6 +181,21 @@ type Store struct {
 	manager        *Manager
 }
 
+// getActiveSKACoinTypes returns a slice of coin types that are configured
+// as active in the chain parameters. This replaces hardcoded loops that
+// iterate over a fixed range of potential SKA coin types.
+func (s *Store) getActiveSKACoinTypes() []cointype.CoinType {
+	var activeCoinTypes []cointype.CoinType
+	if s.chainParams != nil && s.chainParams.SKACoins != nil {
+		for coinType, config := range s.chainParams.SKACoins {
+			if config.Active {
+				activeCoinTypes = append(activeCoinTypes, coinType)
+			}
+		}
+	}
+	return activeCoinTypes
+}
+
 // MainChainTip returns the hash and height of the currently marked tip-most
 // block of the main chain.
 func (s *Store) MainChainTip(dbtx walletdb.ReadTx) (chainhash.Hash, int32) {
@@ -694,8 +709,11 @@ func stakeValidate(ns walletdb.ReadWriteBucket, height int32) error {
 				return err
 			}
 
+			// Get coin type from the credit
+			coinType := fetchRawCreditCoinType(v)
+
 			creditOutPoint.Index = uint32(i)
-			err = putUnspent(ns, &creditOutPoint, &blockRec.Block)
+			err = putUnspent(ns, &creditOutPoint, &blockRec.Block, coinType)
 			if err != nil {
 				return err
 			}
@@ -733,7 +751,10 @@ func stakeValidate(ns walletdb.ReadWriteBucket, height int32) error {
 
 			prevOut := &txRec.MsgTx.TxIn[i].PreviousOutPoint
 			unspentKey := canonicalOutPoint(&prevOut.Hash, prevOut.Index)
-			err = deleteRawUnspent(ns, unspentKey)
+			// Get the coinType from the credit
+			credVal := existsRawCredit(ns, credKey)
+			coinType := fetchRawCreditCoinType(credVal)
+			err = deleteRawUnspent(ns, unspentKey, coinType)
 			if err != nil {
 				return err
 			}
@@ -830,7 +851,11 @@ func stakeInvalidate(ns walletdb.ReadWriteBucket, height int32) error {
 			}
 
 			unspentKey := canonicalOutPoint(txHash, uint32(i))
-			err = deleteRawUnspent(ns, unspentKey)
+			// Get the coinType from the credit
+			creditKey := keyCredit(txHash, uint32(i), &blockRec.Block)
+			credVal := existsRawCredit(ns, creditKey)
+			coinType := fetchRawCreditCoinType(credVal)
+			err = deleteRawUnspent(ns, unspentKey, coinType)
 			if err != nil {
 				return err
 			}
@@ -855,6 +880,16 @@ func stakeInvalidate(ns walletdb.ReadWriteBucket, height int32) error {
 			debVal := ns.NestedReadBucket(bucketDebits).Get(debKey)
 			debitAmount := extractRawDebitAmount(debVal)
 
+			// Get the credit value to extract coin type
+			credVal := existsRawCredit(ns, credKey)
+			var coinType cointype.CoinType
+			if credVal != nil {
+				coinType = fetchRawCreditCoinType(credVal)
+			} else {
+				// Fallback to VAR if credit not found (shouldn't happen in normal operation)
+				coinType = cointype.CoinTypeVAR
+			}
+
 			_, err = unspendRawCredit(ns, credKey)
 			if err != nil {
 				return err
@@ -873,7 +908,7 @@ func stakeInvalidate(ns walletdb.ReadWriteBucket, height int32) error {
 			prevOut := &txRec.MsgTx.TxIn[i].PreviousOutPoint
 			unspentKey := canonicalOutPoint(&prevOut.Hash, prevOut.Index)
 			unspentVal := extractRawDebitUnspentValue(debVal)
-			err = putRawUnspent(ns, unspentKey, unspentVal)
+			err = putRawUnspent(ns, unspentKey, unspentVal, coinType)
 			if err != nil {
 				return err
 			}
@@ -1086,7 +1121,7 @@ func (s *Store) moveMinedTx(ns walletdb.ReadWriteBucket, addrmgrNs walletdb.Read
 		// index set for each rec input below.
 	}
 	for i, input := range rec.MsgTx.TxIn {
-		unspentKey, credKey := existsUnspent(ns, &input.PreviousOutPoint)
+		unspentKey, credKey := existsUnspent(ns, &input.PreviousOutPoint, s.chainParams)
 
 		err = deleteRawUnminedInput(ns, unspentKey)
 		if err != nil {
@@ -1114,7 +1149,9 @@ func (s *Store) moveMinedTx(ns walletdb.ReadWriteBucket, addrmgrNs walletdb.Read
 		if !(creditOpCode == txscript.OP_SSTX) {
 			minedBalance -= amt
 		}
-		err = deleteRawUnspent(ns, unspentKey)
+		// Get the coinType from the credit
+		coinType := fetchRawCreditCoinType(credVal)
+		err = deleteRawUnspent(ns, unspentKey, coinType)
 		if err != nil {
 			return err
 		}
@@ -1138,7 +1175,7 @@ func (s *Store) moveMinedTx(ns walletdb.ReadWriteBucket, addrmgrNs walletdb.Read
 	}
 	for i := uint32(0); i < uint32(len(rec.MsgTx.TxOut)); i++ {
 		k := canonicalOutPoint(&rec.Hash, i)
-		v := existsRawUnminedCredit(ns, k)
+		v := existsRawUnminedCredit(ns, k, s.chainParams)
 		if v == nil {
 			continue
 		}
@@ -1176,7 +1213,7 @@ func (s *Store) moveMinedTx(ns walletdb.ReadWriteBucket, addrmgrNs walletdb.Read
 			return err
 		}
 
-		err = deleteRawUnminedCredit(ns, k)
+		err = deleteRawUnminedCredit(ns, k, s.chainParams)
 		if err != nil {
 			return err
 		}
@@ -1184,7 +1221,7 @@ func (s *Store) moveMinedTx(ns walletdb.ReadWriteBucket, addrmgrNs walletdb.Read
 		if err != nil {
 			return err
 		}
-		err = putUnspent(ns, &cred.outPoint, &block.Block)
+		err = putUnspent(ns, &cred.outPoint, &block.Block, cred.coinType)
 		if err != nil {
 			return err
 		}
@@ -1252,7 +1289,7 @@ func (s *Store) InsertMinedTx(dbtx walletdb.ReadWriteTx, rec *TxRecord, blockHas
 	}
 
 	for i, input := range rec.MsgTx.TxIn {
-		unspentKey, credKey := existsUnspent(ns, &input.PreviousOutPoint)
+		unspentKey, credKey := existsUnspent(ns, &input.PreviousOutPoint, s.chainParams)
 		if credKey == nil {
 			// Debits for unmined transactions are not explicitly
 			// tracked.  Instead, all previous outputs spent by any
@@ -1307,7 +1344,10 @@ func (s *Store) InsertMinedTx(dbtx walletdb.ReadWriteTx, rec *TxRecord, blockHas
 				minedBalance -= amt
 			}
 
-			err = deleteRawUnspent(ns, unspentKey)
+			// Get the coinType from the credit (credVal fetched earlier at line 1292)
+			credVal := existsRawCredit(ns, credKey)
+			coinType := fetchRawCreditCoinType(credVal)
+			err = deleteRawUnspent(ns, unspentKey, coinType)
 			if err != nil {
 				return err
 			}
@@ -1497,7 +1537,7 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 		}
 
 		k := canonicalOutPoint(&rec.Hash, index)
-		if existsRawUnminedCredit(ns, k) != nil {
+		if existsRawUnminedCredit(ns, k, s.chainParams) != nil {
 			return false, nil
 		}
 		scrType := pkScriptType(scriptVersion, pkScript)
@@ -1558,7 +1598,7 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 		}
 	}
 
-	return true, putUnspent(ns, &cred.outPoint, &block.Block)
+	return true, putUnspent(ns, &cred.outPoint, &block.Block, cred.coinType)
 }
 
 // AddTicketCommitment adds the given output of a transaction as a ticket
@@ -1954,10 +1994,12 @@ func (s *Store) Rollback(dbtx walletdb.ReadWriteTx, height int32) error {
 					})
 
 					outPointKey := canonicalOutPoint(&rec.Hash, uint32(i))
-					credKey := existsRawUnspent(ns, outPointKey)
+					credKey := existsRawUnspent(ns, outPointKey, s.chainParams)
 					if credKey != nil {
 						minedBalance -= dcrutil.Amount(output.Value)
-						err = deleteRawUnspent(ns, outPointKey)
+						// Get the coinType from the credit value (v)
+						coinType := fetchRawCreditCoinType(v)
+						err = deleteRawUnspent(ns, outPointKey, coinType)
 						if err != nil {
 							return err
 						}
@@ -2065,13 +2107,16 @@ func (s *Store) Rollback(dbtx walletdb.ReadWriteTx, height int32) error {
 					return err
 				}
 
+				// Get coin type from the credit
+				coinType := fetchRawCreditCoinType(credVal)
+
 				// Ticket output spends are never decremented, so no need
 				// to add them back.
 				if !(creditOpCode == txscript.OP_SSTX) {
 					minedBalance += amt
 				}
 
-				err = putRawUnspent(ns, prevOutKey, unspentVal)
+				err = putRawUnspent(ns, prevOutKey, unspentVal, coinType)
 				if err != nil {
 					return err
 				}
@@ -2140,7 +2185,7 @@ func (s *Store) Rollback(dbtx walletdb.ReadWriteTx, height int32) error {
 					return err
 				}
 
-				credKey := existsRawUnspent(ns, outPointKey)
+				credKey := existsRawUnspent(ns, outPointKey, s.chainParams)
 				if credKey != nil {
 					// Ticket amounts were never added, so ignore them when
 					// correcting the balance.
@@ -2148,7 +2193,8 @@ func (s *Store) Rollback(dbtx walletdb.ReadWriteTx, height int32) error {
 					if !isTicketOutput {
 						minedBalance -= dcrutil.Amount(output.Value)
 					}
-					err = deleteRawUnspent(ns, outPointKey)
+					// Use the coinType from the output
+					err = deleteRawUnspent(ns, outPointKey, output.CoinType)
 					if err != nil {
 						return err
 					}
@@ -2246,7 +2292,7 @@ func (s *Store) outputCreditInfo(ns walletdb.ReadBucket, op wire.OutPoint, block
 	// error. Check unmined first, then mined.
 	var minedCredV []byte
 	unminedCredV := existsRawUnminedCredit(ns,
-		canonicalOutPoint(&op.Hash, op.Index))
+		canonicalOutPoint(&op.Hash, op.Index), s.chainParams)
 	if unminedCredV == nil {
 		if block != nil {
 			credK := keyCredit(&op.Hash, op.Index, block)
@@ -2351,55 +2397,119 @@ func (s *Store) outputCreditInfo(ns walletdb.ReadBucket, op wire.OutPoint, block
 
 // UnspentOutputCount returns the number of mined unspent Credits (including
 // those spent by unmined transactions).
-func (s *Store) UnspentOutputCount(dbtx walletdb.ReadTx) int {
+// If coinType is nil, returns the count of all unspent outputs across all coin types.
+// If coinType is specified, returns only the count for that specific coin type.
+func (s *Store) UnspentOutputCount(dbtx walletdb.ReadTx, coinType *cointype.CoinType) int {
 	ns := dbtx.ReadBucket(wtxmgrBucketKey)
-	return ns.NestedReadBucket(bucketUnspent).KeyN()
+
+	if coinType != nil {
+		// Count for specific coin type
+		bucketName := bucketUnspentForCoinType(*coinType)
+		bucket := ns.NestedReadBucket(bucketName)
+		if bucket == nil {
+			return 0
+		}
+		return bucket.KeyN()
+	}
+
+	// Count for all coin types
+	totalCount := 0
+	for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+		bucketName := bucketUnspentForCoinType(ct)
+		bucket := ns.NestedReadBucket(bucketName)
+		if bucket != nil {
+			totalCount += bucket.KeyN()
+		}
+	}
+	return totalCount
 }
 
-// randomUTXO returns a random key/value pair from the unspent bucket, ignoring
-// any keys that match the skip function.
+// randomUTXO is deprecated - use randomUTXOForCoinType instead.
+// This function remains only for backward compatibility and will be removed.
+// It defaults to searching only VAR (coinType=0) UTXOs.
 func (s *Store) randomUTXO(dbtx walletdb.ReadTx, skip func(k, v []byte) bool) (k, v []byte) {
-	ns := dbtx.ReadBucket(wtxmgrBucketKey)
+	// Default to VAR coin type for backward compatibility
+	return s.randomUTXOForCoinType(dbtx, cointype.CoinTypeVAR, skip)
+}
 
+// randomUTXOForCoinType returns a random unspent output for a specific coin type.
+// The skip function can be used to filter outputs.
+func (s *Store) randomUTXOForCoinType(dbtx walletdb.ReadTx, coinType cointype.CoinType,
+	skip func(k, v []byte) bool) (k, v []byte) {
+
+	ns := dbtx.ReadBucket(wtxmgrBucketKey)
+	bucketName := bucketUnspentForCoinType(coinType)
+	bucket := ns.NestedReadBucket(bucketName)
+
+	if bucket == nil {
+		return nil, nil // No UTXOs for this coin type
+	}
+
+	// Same random selection logic but on coin-type specific bucket
 	r := make([]byte, 33)
 	rand.Read(r)
 	randKey := r[:32]
 	prevFirst := r[32]&1 == 1
 
-	c := ns.NestedReadBucket(bucketUnspent).ReadCursor()
-	k, v = c.Seek(randKey)
-	iter := c.Next
-	if prevFirst {
-		iter = c.Prev
-		k, v = iter()
+	c := bucket.ReadCursor()
+	defer c.Close()
+
+	// Seek to the random key.  If the random key is before all keys, seek
+	// to the first key.  If it is after all keys, seek to the last key.
+	// If the seek positions the cursor at the random key, this is extremely
+	// unlikely, but invalidate the random key by treating it as if it
+	// doesn't exist.
+	seekedKey, seekedValue := c.Seek(randKey)
+	if seekedKey == nil {
+		seekedKey, seekedValue = c.Last()
+		if seekedKey == nil {
+			return nil, nil
+		}
+	}
+	if bytes.Equal(seekedKey, randKey) {
+		seekedKey = nil
 	}
 
-	var keys [][]byte
-	for ; k != nil; k, v = iter() {
-		if len(keys) > 0 && !bytes.Equal(keys[0][:32], k[:32]) {
-			break
-		}
+	// Iterate through all keys in a random order beginning at the random key.
+	// If specified by the prevFirst bool, walk backwards to the beginning
+	// first, then forwards from the seeked key to the end.  Otherwise, walk
+	// forwards to the end first, then backwards from the seeked key to the
+	// beginning.
+	//
+	// While iterating, randomly skip or add keys until a random output is
+	// selected.
+	forward := func() (k, v []byte) { return c.Next() }
+	backward := func() (k, v []byte) { return c.Prev() }
+	var iter func() (k, v []byte)
+	if prevFirst {
+		iter = backward
+	} else {
+		iter = forward
+	}
+	for k, v = seekedKey, seekedValue; k != nil; k, v = iter() {
 		if skip(k, v) {
 			continue
 		}
-		keys = append(keys, append(make([]byte, 0, 36), k...))
+		if rand.IntN(2) == 0 {
+			c.Close()
+			return k, v
+		}
 	}
-	// Pick random output when at least one random transaction was found.
-	if len(keys) > 0 {
-		k, v = c.Seek(keys[rand.IntN(len(keys))])
-		c.Close()
-		return k, v
-	}
-
-	// Search the opposite direction from the random seek key.
 	if prevFirst {
+		iter = forward
 		k, v = c.Seek(randKey)
-		iter = c.Next
+		if bytes.Equal(k, randKey) {
+			k, v = iter()
+		}
 	} else {
-		c.Seek(randKey)
-		iter = c.Prev
+		iter = backward
+		k, v = c.Seek(randKey)
+		if bytes.Equal(k, randKey) {
+			k, v = iter()
+		}
 		k, v = iter()
 	}
+	var keys [][]byte
 	for ; k != nil; k, v = iter() {
 		if len(keys) > 0 && !bytes.Equal(keys[0][:32], k[:32]) {
 			break
@@ -2421,10 +2531,11 @@ func (s *Store) randomUTXO(dbtx walletdb.ReadTx, skip func(k, v []byte) bool) (k
 
 // RandomUTXO returns a random unspent Credit, or nil if none matching are
 // found.
+// The coinType parameter specifies which coin type to select from (VAR=0, SKA=1-255).
 //
 // As an optimization to avoid reading all unspent outputs, this method is
 // limited only to mined outputs, and minConf may not be zero.
-func (s *Store) RandomUTXO(dbtx walletdb.ReadTx, minConf, syncHeight int32) (*Credit, error) {
+func (s *Store) RandomUTXO(dbtx walletdb.ReadTx, minConf, syncHeight int32, coinType cointype.CoinType) (*Credit, error) {
 	ns := dbtx.ReadBucket(wtxmgrBucketKey)
 
 	if minConf == 0 {
@@ -2444,7 +2555,7 @@ func (s *Store) RandomUTXO(dbtx walletdb.ReadTx, minConf, syncHeight int32) (*Cr
 		}
 		return false
 	}
-	k, v := s.randomUTXO(dbtx, skip)
+	k, v := s.randomUTXOForCoinType(dbtx, coinType, skip)
 	if k == nil {
 		return nil, nil
 	}
@@ -2461,72 +2572,93 @@ func (s *Store) RandomUTXO(dbtx walletdb.ReadTx, minConf, syncHeight int32) (*Cr
 	return s.outputCreditInfo(ns, op, &block)
 }
 
-// UnspentOutputs returns all unspent received transaction outputs.
+// UnspentOutputs returns all unspent received transaction outputs for the specified coin type.
 // The order is undefined.
-func (s *Store) UnspentOutputs(dbtx walletdb.ReadTx) ([]*Credit, error) {
+func (s *Store) UnspentOutputs(dbtx walletdb.ReadTx, coinType cointype.CoinType) ([]*Credit, error) {
 	ns := dbtx.ReadBucket(wtxmgrBucketKey)
 	var unspent []*Credit
 
 	var op wire.OutPoint
 	var block Block
-	c := ns.NestedReadBucket(bucketUnspent).ReadCursor()
-	for k, v := c.First(); k != nil; k, v = c.Next() {
-		err := readCanonicalOutPoint(k, &op)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-		if existsRawUnminedInput(ns, k) != nil {
-			// Output is spent by an unmined transaction.
-			// Skip this k/v pair.
+
+	// Use specific coin type buckets only
+	buckets := [][]byte{bucketUnspentForCoinType(coinType)}
+	unminedBuckets := [][]byte{bucketUnminedCreditsForCoinType(coinType)}
+
+	// Iterate through mined unspent outputs
+	for _, bucketName := range buckets {
+		bucket := ns.NestedReadBucket(bucketName)
+		if bucket == nil {
 			continue
 		}
 
-		err = readUnspentBlock(v, &block)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
+		c := bucket.ReadCursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			err := readCanonicalOutPoint(k, &op)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+			if existsRawUnminedInput(ns, k) != nil {
+				// Output is spent by an unmined transaction.
+				// Skip this k/v pair.
+				continue
+			}
 
-		cred, err := s.outputCreditInfo(ns, op, &block)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
+			err = readUnspentBlock(v, &block)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
 
-		unspent = append(unspent, cred)
+			cred, err := s.outputCreditInfo(ns, op, &block)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+
+			unspent = append(unspent, cred)
+		}
+		c.Close()
 	}
-	c.Close()
 
-	c = ns.NestedReadBucket(bucketUnminedCredits).ReadCursor()
-	for k, _ := c.First(); k != nil; k, _ = c.Next() {
-		if existsRawUnminedInput(ns, k) != nil {
-			// Output is spent by an unmined transaction.
-			// Skip to next unmined credit.
+	// Iterate through unmined credits
+	for _, bucketName := range unminedBuckets {
+		bucket := ns.NestedReadBucket(bucketName)
+		if bucket == nil {
 			continue
 		}
 
-		// Skip outputs from unpublished transactions.
-		txHash := k[:32]
-		if existsUnpublished(ns, txHash) {
-			continue
-		}
+		c := bucket.ReadCursor()
+		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+			if existsRawUnminedInput(ns, k) != nil {
+				// Output is spent by an unmined transaction.
+				// Skip to next unmined credit.
+				continue
+			}
 
-		err := readCanonicalOutPoint(k, &op)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
+			// Skip outputs from unpublished transactions.
+			txHash := k[:32]
+			if existsUnpublished(ns, txHash) {
+				continue
+			}
 
-		cred, err := s.outputCreditInfo(ns, op, nil)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
+			err := readCanonicalOutPoint(k, &op)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
 
-		unspent = append(unspent, cred)
+			cred, err := s.outputCreditInfo(ns, op, nil)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+
+			unspent = append(unspent, cred)
+		}
+		c.Close()
 	}
-	c.Close()
 
 	log.Tracef("%v many utxos found in database", len(unspent))
 
@@ -2540,15 +2672,18 @@ func (s *Store) UnspentOutputs(dbtx walletdb.ReadTx) ([]*Credit, error) {
 func (s *Store) UnspentOutput(ns walletdb.ReadBucket, op wire.OutPoint, includeMempool bool) (*Credit, error) {
 	k := canonicalOutPoint(&op.Hash, op.Index)
 	// Check if unspent output is in mempool (if includeMempool == true).
-	if includeMempool && existsRawUnminedCredit(ns, k) != nil {
+	if includeMempool && existsRawUnminedCredit(ns, k, s.chainParams) != nil {
 		return s.outputCreditInfo(ns, op, nil)
 	}
-	// Check for unspent output in bucket for mined unspents.
-	if v := ns.NestedReadBucket(bucketUnspent).Get(k); v != nil {
+	// Check for unspent output in coin-type specific buckets for mined unspents.
+	// Use existsRawUnspent which checks all coin-type buckets
+	if credKey := existsRawUnspent(ns, k, s.chainParams); credKey != nil {
+		// Extract block info from the credit key
+		// Credit key format: txhash[32] + blockheight[4] + blockhash[32] + outputindex[4]
 		var block Block
-		err := readUnspentBlock(v, &block)
-		if err != nil {
-			return nil, err
+		if len(credKey) >= 68 {
+			block.Height = int32(byteOrder.Uint32(credKey[32:36]))
+			copy(block.Hash[:], credKey[36:68])
 		}
 		return s.outputCreditInfo(ns, op, &block)
 	}
@@ -2556,74 +2691,125 @@ func (s *Store) UnspentOutput(ns walletdb.ReadBucket, op wire.OutPoint, includeM
 }
 
 // ForEachUnspentOutpoint calls f on each UTXO outpoint.
+// If coinType is nil, iterates through all unspent outputs across all coin types.
+// If coinType is specified, iterates only through outputs of that specific coin type.
 // The order is undefined.
-func (s *Store) ForEachUnspentOutpoint(dbtx walletdb.ReadTx, f func(*wire.OutPoint) error) error {
+func (s *Store) ForEachUnspentOutpoint(dbtx walletdb.ReadTx, coinType *cointype.CoinType, f func(*wire.OutPoint) error) error {
 	ns := dbtx.ReadBucket(wtxmgrBucketKey)
-	c := ns.NestedReadBucket(bucketUnspent).ReadCursor()
-	defer func() {
-		c.Close()
-	}()
-	for k, v := c.First(); k != nil; k, v = c.Next() {
-		var op wire.OutPoint
-		err := readCanonicalOutPoint(k, &op)
-		if err != nil {
-			return err
-		}
-		if existsRawUnminedInput(ns, k) != nil {
-			// Output is spent by an unmined transaction.
-			// Skip this k/v pair.
-			continue
-		}
 
-		block := new(Block)
-		err = readUnspentBlock(v, block)
-		if err != nil {
-			return err
+	// Determine which buckets to iterate based on coinType parameter
+	var buckets [][]byte
+	if coinType == nil {
+		// Iterate all coin type buckets (0-255)
+		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+			bucketName := bucketUnspentForCoinType(ct)
+			if ns.NestedReadBucket(bucketName) != nil {
+				buckets = append(buckets, bucketName)
+			}
 		}
-
-		kC := keyCredit(&op.Hash, op.Index, block)
-		vC := existsRawCredit(ns, kC)
-		opCode := fetchRawCreditTagOpCode(vC)
-		op.Tree = wire.TxTreeRegular
-		if opCode != opNonstake {
-			op.Tree = wire.TxTreeStake
-		}
-
-		if err := f(&op); err != nil {
-			return err
-		}
+	} else {
+		// Use specific coin type bucket
+		buckets = [][]byte{bucketUnspentForCoinType(*coinType)}
 	}
 
-	c.Close()
-	c = ns.NestedReadBucket(bucketUnminedCredits).ReadCursor()
-	for k, v := c.First(); k != nil; k, v = c.Next() {
-		if existsRawUnminedInput(ns, k) != nil {
-			// Output is spent by an unmined transaction.
-			// Skip to next unmined credit.
+	// Iterate through selected buckets
+	for _, bucketName := range buckets {
+		bucket := ns.NestedReadBucket(bucketName)
+		if bucket == nil {
 			continue
 		}
 
-		// Skip outputs from unpublished transactions.
-		txHash := k[:32]
-		if existsUnpublished(ns, txHash) {
+		c := bucket.ReadCursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			var op wire.OutPoint
+			err := readCanonicalOutPoint(k, &op)
+			if err != nil {
+				c.Close()
+				return err
+			}
+			if existsRawUnminedInput(ns, k) != nil {
+				// Output is spent by an unmined transaction.
+				// Skip this k/v pair.
+				continue
+			}
+
+			block := new(Block)
+			err = readUnspentBlock(v, block)
+			if err != nil {
+				c.Close()
+				return err
+			}
+
+			kC := keyCredit(&op.Hash, op.Index, block)
+			vC := existsRawCredit(ns, kC)
+			opCode := fetchRawCreditTagOpCode(vC)
+			op.Tree = wire.TxTreeRegular
+			if opCode != opNonstake {
+				op.Tree = wire.TxTreeStake
+			}
+
+			if err := f(&op); err != nil {
+				c.Close()
+				return err
+			}
+		}
+		c.Close()
+	}
+
+	// Iterate through unmined credits
+	var unminedBuckets [][]byte
+	if coinType == nil {
+		// Iterate all coin type unmined buckets (0-255)
+		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+			bucketName := bucketUnminedCreditsForCoinType(ct)
+			if ns.NestedReadBucket(bucketName) != nil {
+				unminedBuckets = append(unminedBuckets, bucketName)
+			}
+		}
+	} else {
+		// Use specific coin type unmined bucket
+		unminedBuckets = [][]byte{bucketUnminedCreditsForCoinType(*coinType)}
+	}
+
+	for _, bucketName := range unminedBuckets {
+		bucket := ns.NestedReadBucket(bucketName)
+		if bucket == nil {
 			continue
 		}
 
-		var op wire.OutPoint
-		err := readCanonicalOutPoint(k, &op)
-		if err != nil {
-			return err
-		}
+		c := bucket.ReadCursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if existsRawUnminedInput(ns, k) != nil {
+				// Output is spent by an unmined transaction.
+				// Skip to next unmined credit.
+				continue
+			}
 
-		opCode := fetchRawUnminedCreditTagOpCode(v)
-		op.Tree = wire.TxTreeRegular
-		if opCode != opNonstake {
-			op.Tree = wire.TxTreeStake
-		}
+			// Skip outputs from unpublished transactions.
+			txHash := k[:32]
+			if existsUnpublished(ns, txHash) {
+				continue
+			}
 
-		if err := f(&op); err != nil {
-			return err
+			var op wire.OutPoint
+			err := readCanonicalOutPoint(k, &op)
+			if err != nil {
+				c.Close()
+				return err
+			}
+
+			opCode := fetchRawUnminedCreditTagOpCode(v)
+			op.Tree = wire.TxTreeRegular
+			if opCode != opNonstake {
+				op.Tree = wire.TxTreeStake
+			}
+
+			if err := f(&op); err != nil {
+				c.Close()
+				return err
+			}
 		}
+		c.Close()
 	}
 
 	return nil
@@ -2639,12 +2825,13 @@ func (s *Store) IsUnspentOutpoint(dbtx walletdb.ReadTx, op *wire.OutPoint) bool 
 	}
 
 	k := canonicalOutPoint(&op.Hash, op.Index)
-	if v := ns.NestedReadBucket(bucketUnspent); v != nil {
+	// Check if exists in any coin-type specific unspent bucket
+	if credKey := existsRawUnspent(ns, k, s.chainParams); credKey != nil {
 		// Output is mined and not spent by any other mined tx, but may be spent
 		// by an unmined transaction.
 		return existsRawUnminedInput(ns, k) == nil
 	}
-	if v := existsRawUnminedCredit(ns, k); v != nil {
+	if v := existsRawUnminedCredit(ns, k, s.chainParams); v != nil {
 		// Output is in an unmined transaction, but may be spent by another
 		// unmined transaction.
 		return existsRawUnminedInput(ns, k) == nil
@@ -2671,7 +2858,7 @@ func (s *Store) UnspentTickets(dbtx walletdb.ReadTx, syncHeight int32, includeIm
 		// credit.  Use the credit's spent tracking to determine if the ticket
 		// is spent or not.
 		opKey := canonicalOutPoint(&hash, 0)
-		if existsRawUnspent(ns, opKey) == nil {
+		if existsRawUnspent(ns, opKey, s.chainParams) == nil {
 			// No unspent record indicates the output was spent by a mined
 			// transaction.
 			continue
@@ -2974,7 +3161,7 @@ func (s *Store) fastCreditPkScriptLookup(ns walletdb.ReadBucket, credKey []byte,
 	// Look both of these up. If it doesn't, throw an
 	// error. Check unmined first, then mined.
 	var minedCredV []byte
-	unminedCredV := existsRawUnminedCredit(ns, unminedCredKey)
+	unminedCredV := existsRawUnminedCredit(ns, unminedCredKey, s.chainParams)
 	if unminedCredV == nil {
 		minedCredV = existsRawCredit(ns, credKey)
 	}
@@ -3026,365 +3213,29 @@ func (s *InputSource) SelectInputs(target dcrutil.Amount) (*txauthor.InputDetail
 	return s.source(target)
 }
 
-// MakeInputSource creates an InputSource to redeem unspent outputs from an
-// account.  The minConf and syncHeight parameters are used to filter outputs
-// based on some spendable policy.  An ignore func is called to determine whether
-// an output must be excluded from the source, and may be nil to ignore nothing.
-func (s *Store) MakeInputSource(dbtx walletdb.ReadTx, account uint32, minConf,
-	syncHeight int32, ignore func(*wire.OutPoint) bool) InputSource {
-
-	ns := dbtx.ReadBucket(wtxmgrBucketKey)
-	addrmgrNs := dbtx.ReadBucket(waddrmgrBucketKey)
-
-	// Cursors to iterate over the (mined) unspent and unmined credit
-	// buckets.  These are closed over by the returned input source and
-	// reused across multiple calls.
-	//
-	// These cursors are initialized to nil and are set to a valid cursor
-	// when first needed.  This is done since cursors are not positioned
-	// when created, and positioning a cursor also returns a key/value pair.
-	// The simplest way to handle this is to branch to either cursor.First
-	// or cursor.Next depending on whether the cursor has already been
-	// created or not.
-	var bucketUnspentCursor, bucketUnminedCreditsCursor walletdb.ReadCursor
-
-	defer func() {
-		if bucketUnspentCursor != nil {
-			bucketUnspentCursor.Close()
-			bucketUnspentCursor = nil
-		}
-
-		if bucketUnminedCreditsCursor != nil {
-			bucketUnminedCreditsCursor.Close()
-			bucketUnminedCreditsCursor = nil
-		}
-	}()
-
-	type remainingKey struct {
-		k       []byte
-		unmined bool
-	}
-
-	// Current inputs and their total value.  These are closed over by the
-	// returned input source and reused across multiple calls.
-	var (
-		currentTotal      dcrutil.Amount
-		currentInputs     []*wire.TxIn
-		currentScripts    [][]byte
-		redeemScriptSizes []int
-		seen              = make(map[string]struct{}) // random unspent bucket keys
-		numUnspent        = ns.NestedReadBucket(bucketUnspent).KeyN()
-		randTries         int
-		remainingKeys     []remainingKey
-	)
-
-	if minConf != 0 {
-		log.Debugf("Unspent bucket k/v count: %v", numUnspent)
-	}
-
-	skip := func(k, v []byte) bool {
-		if existsRawUnminedInput(ns, k) != nil {
-			// Output is spent by an unmined transaction.
-			// Skip to next unmined credit.
-			return true
-		}
-		var block Block
-		err := readUnspentBlock(v, &block)
-		if err != nil || !confirmed(minConf, block.Height, syncHeight) {
-			return true
-		}
-		if _, ok := seen[string(k)]; ok {
-			// already found by the random search
-			return true
-		}
-		return false
-	}
-
-	f := func(target dcrutil.Amount) (*txauthor.InputDetail, error) {
-		for currentTotal < target || target == 0 {
-			var k, v []byte
-			var err error
-			if minConf != 0 && target != 0 && randTries < numUnspent/2 {
-				randTries++
-				k, v = s.randomUTXO(dbtx, skip)
-				if k != nil {
-					seen[string(k)] = struct{}{}
-				}
-			} else if remainingKeys == nil {
-				if randTries > 0 {
-					log.Debugf("Abandoned random UTXO selection "+
-						"attempts after %v tries", randTries)
-				}
-				// All remaining keys not discovered by the
-				// random search (if any was performed) are read
-				// into memory and shuffled, and then iterated
-				// over.
-				remainingKeys = make([]remainingKey, 0)
-				b := ns.NestedReadBucket(bucketUnspent)
-				err = b.ForEach(func(k, v []byte) error {
-					if skip(k, v) {
-						return nil
-					}
-					kcopy := make([]byte, len(k))
-					copy(kcopy, k)
-					remainingKeys = append(remainingKeys, remainingKey{
-						k: kcopy,
-					})
-					return nil
-				})
-				if err != nil {
-					return nil, err
-				}
-				if minConf == 0 {
-					b = ns.NestedReadBucket(bucketUnminedCredits)
-					err = b.ForEach(func(k, v []byte) error {
-						if _, ok := seen[string(k)]; ok {
-							return nil
-						}
-						// Skip unmined outputs from unpublished transactions.
-						if txHash := k[:32]; existsUnpublished(ns, txHash) {
-							return nil
-						}
-						// Skip ticket outputs, as only SSGen can spend these.
-						opcode := fetchRawUnminedCreditTagOpCode(v)
-						if opcode == txscript.OP_SSTX {
-							return nil
-						}
-						// Skip outputs that are not mature.
-						switch opcode {
-						case txscript.OP_SSGEN, txscript.OP_SSTXCHANGE, txscript.OP_SSRTX,
-							txscript.OP_TADD, txscript.OP_TGEN:
-							return nil
-						}
-
-						kcopy := make([]byte, len(k))
-						copy(kcopy, k)
-						remainingKeys = append(remainingKeys, remainingKey{
-							k:       kcopy,
-							unmined: true,
-						})
-						return nil
-					})
-					if err != nil {
-						return nil, err
-					}
-				}
-				rand.ShuffleSlice(remainingKeys)
-			}
-
-			var unmined bool
-			if k == nil {
-				if len(remainingKeys) == 0 {
-					// No more UTXOs available.
-					break
-				}
-				next := remainingKeys[0]
-				remainingKeys = remainingKeys[1:]
-				k, unmined = next.k, next.unmined
-			}
-			if !unmined {
-				v = ns.NestedReadBucket(bucketUnspent).Get(k)
-			} else {
-				v = ns.NestedReadBucket(bucketUnminedCredits).Get(k)
-			}
-
-			tree := wire.TxTreeRegular
-			var op wire.OutPoint
-			var amt dcrutil.Amount
-			var pkScript []byte
-
-			if !unmined {
-				cKey := make([]byte, 72)
-				copy(cKey[0:32], k[0:32])   // Tx hash
-				copy(cKey[32:36], v[0:4])   // Block height
-				copy(cKey[36:68], v[4:36])  // Block hash
-				copy(cKey[68:72], k[32:36]) // Output index
-
-				cVal := existsRawCredit(ns, cKey)
-
-				// Check the account first.
-				pkScript, err = s.fastCreditPkScriptLookup(ns, cKey, nil)
-				if err != nil {
-					return nil, err
-				}
-				thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, cVal, nil, pkScript)
-				if err != nil {
-					return nil, err
-				}
-				if account != thisAcct {
-					continue
-				}
-
-				var spent bool
-				amt, spent, err = fetchRawCreditAmountSpent(cVal)
-				if err != nil {
-					return nil, err
-				}
-
-				// This should never happen since this is already in bucket
-				// unspent, but let's be careful anyway.
-				if spent {
-					continue
-				}
-
-				// Skip zero value outputs.
-				if amt == 0 {
-					continue
-				}
-
-				// Skip ticket outputs, as only SSGen can spend these.
-				opcode := fetchRawCreditTagOpCode(cVal)
-				if opcode == txscript.OP_SSTX {
-					continue
-				}
-
-				// Only include this output if it meets the required number of
-				// confirmations.  Coinbase transactions must have reached
-				// maturity before their outputs may be spent.
-				txHeight := extractRawCreditHeight(cKey)
-				if !confirmed(minConf, txHeight, syncHeight) {
-					continue
-				}
-
-				// Skip outputs that are not mature.
-				if opcode == opNonstake && fetchRawCreditIsCoinbase(cVal) {
-					if !coinbaseMatured(s.chainParams, txHeight, syncHeight) {
-						continue
-					}
-				}
-				switch opcode {
-				case txscript.OP_SSGEN, txscript.OP_SSRTX, txscript.OP_TADD,
-					txscript.OP_TGEN:
-					if !coinbaseMatured(s.chainParams, txHeight, syncHeight) {
-						continue
-					}
-				}
-				if opcode == txscript.OP_SSTXCHANGE {
-					if !ticketChangeMatured(s.chainParams, txHeight, syncHeight) {
-						continue
-					}
-				}
-
-				// Determine the txtree for the outpoint by whether or not it's
-				// using stake tagged outputs.
-				if opcode != opNonstake {
-					tree = wire.TxTreeStake
-				}
-
-				err = readCanonicalOutPoint(k, &op)
-				if err != nil {
-					return nil, err
-				}
-				op.Tree = tree
-
-			} else {
-				// Check the account first.
-				pkScript, err = s.fastCreditPkScriptLookup(ns, nil, k)
-				if err != nil {
-					return nil, err
-				}
-				thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, nil, v, pkScript)
-				if err != nil {
-					return nil, err
-				}
-				if account != thisAcct {
-					continue
-				}
-
-				amt, err = fetchRawUnminedCreditAmount(v)
-				if err != nil {
-					return nil, err
-				}
-
-				// Determine the txtree for the outpoint by whether or not it's
-				// using stake tagged outputs.
-				tree = wire.TxTreeRegular
-				opcode := fetchRawUnminedCreditTagOpCode(v)
-				if opcode != opNonstake {
-					tree = wire.TxTreeStake
-				}
-
-				err = readCanonicalOutPoint(k, &op)
-				if err != nil {
-					return nil, err
-				}
-				op.Tree = tree
-			}
-
-			if ignore != nil && ignore(&op) {
-				continue
-			}
-
-			input := wire.NewTxIn(&op, int64(amt), nil)
-
-			// Unspent credits are currently expected to be either P2PKH or
-			// P2PK, P2PKH/P2SH nested in a revocation/stakechange/vote output.
-			// Ignore stake P2SH since it can pay to any script, which the
-			// wallet may not recognize.
-			var scriptSize int
-			scriptClass := stdscript.DetermineScriptType(scriptVersionAssumed, pkScript)
-			scriptSubClass, _ := txrules.StakeSubScriptType(scriptClass)
-			switch scriptSubClass {
-			case stdscript.STPubKeyHashEcdsaSecp256k1:
-				scriptSize = txsizes.RedeemP2PKHSigScriptSize
-			case stdscript.STPubKeyEcdsaSecp256k1:
-				scriptSize = txsizes.RedeemP2PKSigScriptSize
-			default:
-				log.Errorf("unexpected script class for credit: %v", scriptClass)
-				continue
-			}
-
-			currentTotal += amt
-			currentInputs = append(currentInputs, input)
-			currentScripts = append(currentScripts, pkScript)
-			redeemScriptSizes = append(redeemScriptSizes, scriptSize)
-		}
-
-		inputDetail := &txauthor.InputDetail{
-			Amount:            currentTotal,
-			Inputs:            currentInputs,
-			Scripts:           currentScripts,
-			RedeemScriptSizes: redeemScriptSizes,
-		}
-
-		return inputDetail, nil
-	}
-
-	return InputSource{source: f}
-}
-
 // MakeInputSourceWithCoinType creates an InputSource that filters UTXOs by coin type.
 // This is essential for dual-coin transactions to ensure SKA transactions use SKA UTXOs
 // and VAR transactions use VAR UTXOs.
+//
+// The coinType parameter must be in the range 0-255 where:
+//   - 0 = VAR (Varta) coins - the mined network currency
+//   - 1-255 = SKA (Skarb) coin types - asset-backed pre-emitted coins
+//
+// The returned InputSource will only select UTXOs matching the specified coin type.
+// If no matching UTXOs exist, the InputSource will return an empty result.
+// Invalid coin types (>255) will cause the InputSource to return an error.
 func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32, minConf,
 	syncHeight int32, ignore func(*wire.OutPoint) bool, coinType cointype.CoinType) InputSource {
 
+	// Validate coin type parameter (0 = VAR, 1-255 = SKA types)
+	if coinType > cointype.CoinTypeMax {
+		return InputSource{source: func(target dcrutil.Amount) (*txauthor.InputDetail, error) {
+			return nil, errors.E(errors.Invalid, errors.Errorf("invalid coin type: %d", coinType))
+		}}
+	}
+
 	ns := dbtx.ReadBucket(wtxmgrBucketKey)
 	addrmgrNs := dbtx.ReadBucket(waddrmgrBucketKey)
-
-	// Cursors to iterate over the (mined) unspent and unmined credit
-	// buckets.  These are closed over by the returned input source and
-	// reused across multiple calls.
-	//
-	// These cursors are initialized to nil and are set to a valid cursor
-	// when first needed.  This is done since cursors are not positioned
-	// when created, and positioning a cursor also returns a key/value pair.
-	// The simplest way to handle this is to branch to either cursor.First
-	// or cursor.Next depending on whether the cursor has already been
-	// created or not.
-	var bucketUnspentCursor, bucketUnminedCreditsCursor walletdb.ReadCursor
-
-	defer func() {
-		if bucketUnspentCursor != nil {
-			bucketUnspentCursor.Close()
-			bucketUnspentCursor = nil
-		}
-
-		if bucketUnminedCreditsCursor != nil {
-			bucketUnminedCreditsCursor.Close()
-			bucketUnminedCreditsCursor = nil
-		}
-	}()
 
 	type remainingKey struct {
 		k       []byte
@@ -3399,13 +3250,19 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 		currentScripts    [][]byte
 		redeemScriptSizes []int
 		seen              = make(map[string]struct{}) // random unspent bucket keys
-		numUnspent        = ns.NestedReadBucket(bucketUnspent).KeyN()
+		numUnspent        = 0
 		randTries         int
 		remainingKeys     []remainingKey
 	)
 
+	// Get number of unspent outputs for this specific coin type
+	unspentBucket := ns.NestedReadBucket(bucketUnspentForCoinType(coinType))
+	if unspentBucket != nil {
+		numUnspent = unspentBucket.KeyN()
+	}
+
 	if minConf != 0 {
-		log.Debugf("Unspent bucket k/v count: %v", numUnspent)
+		log.Debugf("Unspent bucket k/v count for coin type %d: %v", coinType, numUnspent)
 	}
 
 	skip := func(k, v []byte) bool {
@@ -3432,7 +3289,7 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 			var err error
 			if minConf != 0 && target != 0 && randTries < numUnspent/2 {
 				randTries++
-				k, v = s.randomUTXO(dbtx, skip)
+				k, v = s.randomUTXOForCoinType(dbtx, coinType, skip)
 				if k != nil {
 					seen[string(k)] = struct{}{}
 				}
@@ -3446,53 +3303,57 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				// into memory and shuffled, and then iterated
 				// over.
 				remainingKeys = make([]remainingKey, 0)
-				b := ns.NestedReadBucket(bucketUnspent)
-				err = b.ForEach(func(k, v []byte) error {
-					if skip(k, v) {
-						return nil
-					}
-					kcopy := make([]byte, len(k))
-					copy(kcopy, k)
-					remainingKeys = append(remainingKeys, remainingKey{
-						k: kcopy,
-					})
-					return nil
-				})
-				if err != nil {
-					return nil, err
-				}
-				if minConf == 0 {
-					b = ns.NestedReadBucket(bucketUnminedCredits)
+				b := ns.NestedReadBucket(bucketUnspentForCoinType(coinType))
+				if b != nil {
 					err = b.ForEach(func(k, v []byte) error {
-						if _, ok := seen[string(k)]; ok {
+						if skip(k, v) {
 							return nil
 						}
-						// Skip unmined outputs from unpublished transactions.
-						if txHash := k[:32]; existsUnpublished(ns, txHash) {
-							return nil
-						}
-						// Skip ticket outputs, as only SSGen can spend these.
-						opcode := fetchRawUnminedCreditTagOpCode(v)
-						if opcode == txscript.OP_SSTX {
-							return nil
-						}
-						// Skip outputs that are not mature.
-						switch opcode {
-						case txscript.OP_SSGEN, txscript.OP_SSTXCHANGE, txscript.OP_SSRTX,
-							txscript.OP_TADD, txscript.OP_TGEN:
-							return nil
-						}
-
 						kcopy := make([]byte, len(k))
 						copy(kcopy, k)
 						remainingKeys = append(remainingKeys, remainingKey{
-							k:       kcopy,
-							unmined: true,
+							k: kcopy,
 						})
 						return nil
 					})
 					if err != nil {
 						return nil, err
+					}
+				}
+				if minConf == 0 {
+					b = ns.NestedReadBucket(bucketUnminedCreditsForCoinType(coinType))
+					if b != nil {
+						err = b.ForEach(func(k, v []byte) error {
+							if _, ok := seen[string(k)]; ok {
+								return nil
+							}
+							// Skip unmined outputs from unpublished transactions.
+							if txHash := k[:32]; existsUnpublished(ns, txHash) {
+								return nil
+							}
+							// Skip ticket outputs, as only SSGen can spend these.
+							opcode := fetchRawUnminedCreditTagOpCode(v)
+							if opcode == txscript.OP_SSTX {
+								return nil
+							}
+							// Skip outputs that are not mature.
+							switch opcode {
+							case txscript.OP_SSGEN, txscript.OP_SSTXCHANGE, txscript.OP_SSRTX,
+								txscript.OP_TADD, txscript.OP_TGEN:
+								return nil
+							}
+
+							kcopy := make([]byte, len(k))
+							copy(kcopy, k)
+							remainingKeys = append(remainingKeys, remainingKey{
+								k:       kcopy,
+								unmined: true,
+							})
+							return nil
+						})
+						if err != nil {
+							return nil, err
+						}
 					}
 				}
 				rand.ShuffleSlice(remainingKeys)
@@ -3508,10 +3369,17 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				remainingKeys = remainingKeys[1:]
 				k, unmined = next.k, next.unmined
 			}
+			// Use coin-type specific buckets
 			if !unmined {
-				v = ns.NestedReadBucket(bucketUnspent).Get(k)
+				unspentBucket := ns.NestedReadBucket(bucketUnspentForCoinType(coinType))
+				if unspentBucket != nil {
+					v = unspentBucket.Get(k)
+				}
 			} else {
-				v = ns.NestedReadBucket(bucketUnminedCredits).Get(k)
+				unminedBucket := ns.NestedReadBucket(bucketUnminedCreditsForCoinType(coinType))
+				if unminedBucket != nil {
+					v = unminedBucket.Get(k)
+				}
 			}
 
 			tree := wire.TxTreeRegular
@@ -3528,11 +3396,7 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 
 				cVal := existsRawCredit(ns, cKey)
 
-				// COIN TYPE FILTER: Check if this UTXO matches the required coin type
-				utxoCoinType := fetchRawCreditCoinType(cVal)
-				if utxoCoinType != coinType {
-					continue
-				}
+				// No need to filter by coin type - already reading from coin-type specific bucket
 
 				// Check the account first.
 				pkScript, err = s.fastCreditPkScriptLookup(ns, cKey, nil)
@@ -3610,11 +3474,7 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				op.Tree = tree
 
 			} else {
-				// COIN TYPE FILTER: Check unmined credit coin type
-				utxoCoinType := fetchRawUnminedCreditCoinType(v)
-				if utxoCoinType != coinType {
-					continue
-				}
+				// No need to filter by coin type - already reading from coin-type specific bucket
 
 				// Check the account first.
 				pkScript, err = s.fastCreditPkScriptLookup(ns, nil, k)
@@ -3700,271 +3560,398 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 	addrmgrNs := dbtx.ReadBucket(waddrmgrBucketKey)
 
 	accountBalances := make(map[uint32]*Balances)
-	c := ns.NestedReadBucket(bucketUnspent).ReadCursor()
-	for k, v := c.First(); k != nil; k, v = c.Next() {
-		if existsRawUnminedInput(ns, k) != nil {
-			// Output is spent by an unmined transaction.
-			// Skip to next unmined credit.
-			continue
-		}
 
-		cKey := make([]byte, 72)
-		copy(cKey[0:32], k[0:32])   // Tx hash
-		copy(cKey[32:36], v[0:4])   // Block height
-		copy(cKey[36:68], v[4:36])  // Block hash
-		copy(cKey[68:72], k[32:36]) // Output index
-
-		cVal := existsRawCredit(ns, cKey)
-		if cVal == nil {
-			c.Close()
-			return nil, errors.E(errors.IO, "missing credit for unspent output")
-		}
-
-		// Check the account first.
-		pkScript, err := s.fastCreditPkScriptLookup(ns, cKey, nil)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-		thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, cVal, nil, pkScript)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-
-		utxoAmt, err := fetchRawCreditAmount(cVal)
-		if err != nil {
-			c.Close()
-			return nil, err
-		}
-
-		height := extractRawCreditHeight(cKey)
-		opcode := fetchRawCreditTagOpCode(cVal)
-		coinType := fetchRawCreditCoinType(cVal)
-
-		ab, ok := accountBalances[thisAcct]
-		if !ok {
-			ab = &Balances{
-				Account:          thisAcct,
-				CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
+	// First, check coin-type-specific bucket for VAR (most common)
+	varBucket := ns.NestedReadBucket(bucketUnspentForCoinType(cointype.CoinTypeVAR))
+	if varBucket != nil {
+		c := varBucket.ReadCursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if existsRawUnminedInput(ns, k) != nil {
+				// Output is spent by an unmined transaction.
+				// Skip to next unmined credit.
+				continue
 			}
-			accountBalances[thisAcct] = ab
-		}
 
-		// Ensure coin type balance entry exists
-		if _, exists := ab.CoinTypeBalances[coinType]; !exists {
-			ab.CoinTypeBalances[coinType] = CoinBalance{
-				CoinType: coinType,
+			cKey := make([]byte, 72)
+			copy(cKey[0:32], k[0:32])   // Tx hash
+			copy(cKey[32:36], v[0:4])   // Block height
+			copy(cKey[36:68], v[4:36])  // Block hash
+			copy(cKey[68:72], k[32:36]) // Output index
+
+			cVal := existsRawCredit(ns, cKey)
+			if cVal == nil {
+				c.Close()
+				return nil, errors.E(errors.IO, "missing credit for unspent output")
 			}
-		}
 
-		// Get current coin type balance for modification
-		coinBalance := ab.CoinTypeBalances[coinType]
+			// Check the account first.
+			pkScript, err := s.fastCreditPkScriptLookup(ns, cKey, nil)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+			thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, cVal, nil, pkScript)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
 
-		switch opcode {
-		case txscript.OP_TGEN:
-			// Or add another type of balance?
-			fallthrough
-		case opNonstake:
-			isConfirmed := confirmed(minConf, height, syncHeight)
-			creditFromCoinbase := fetchRawCreditIsCoinbase(cVal)
-			matureCoinbase := (creditFromCoinbase &&
-				coinbaseMatured(s.chainParams, height, syncHeight))
+			utxoAmt, err := fetchRawCreditAmount(cVal)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
 
-			if (isConfirmed && !creditFromCoinbase) ||
-				matureCoinbase {
-				// Update per-coin balance
-				coinBalance.Spendable += utxoAmt
-				// Update legacy VAR balance for backward compatibility
-				if coinType == cointype.CoinTypeVAR {
-					ab.Spendable += utxoAmt
+			height := extractRawCreditHeight(cKey)
+			opcode := fetchRawCreditTagOpCode(cVal)
+			coinType := fetchRawCreditCoinType(cVal)
+
+			ab, ok := accountBalances[thisAcct]
+			if !ok {
+				ab = &Balances{
+					Account:          thisAcct,
+					CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
 				}
-			} else if creditFromCoinbase && !matureCoinbase {
-				// Update per-coin balance
-				coinBalance.ImmatureCoinbaseRewards += utxoAmt
-				// Update legacy VAR balance for backward compatibility
-				if coinType == cointype.CoinTypeVAR {
-					ab.ImmatureCoinbaseRewards += utxoAmt
+				accountBalances[thisAcct] = ab
+			}
+
+			// Ensure coin type balance entry exists
+			if _, exists := ab.CoinTypeBalances[coinType]; !exists {
+				ab.CoinTypeBalances[coinType] = CoinBalance{
+					CoinType: coinType,
 				}
 			}
 
-			// Update per-coin total
-			coinBalance.Total += utxoAmt
-			// Update legacy VAR total for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.Total += utxoAmt
-			}
-		case txscript.OP_SSTX:
-			// Update per-coin balance
-			coinBalance.VotingAuthority += utxoAmt
-			// Update legacy VAR balance for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.VotingAuthority += utxoAmt
-			}
-		case txscript.OP_SSGEN:
-			fallthrough
-		case txscript.OP_SSRTX:
-			if coinbaseMatured(s.chainParams, height, syncHeight) {
+			// Get current coin type balance for modification
+			coinBalance := ab.CoinTypeBalances[coinType]
+
+			switch opcode {
+			case txscript.OP_TGEN:
+				// Or add another type of balance?
+				fallthrough
+			case opNonstake:
+				isConfirmed := confirmed(minConf, height, syncHeight)
+				creditFromCoinbase := fetchRawCreditIsCoinbase(cVal)
+				matureCoinbase := (creditFromCoinbase &&
+					coinbaseMatured(s.chainParams, height, syncHeight))
+
+				if (isConfirmed && !creditFromCoinbase) ||
+					matureCoinbase {
+					// Update per-coin balance
+					coinBalance.Spendable += utxoAmt
+					// Update legacy VAR balance for backward compatibility
+					if coinType == cointype.CoinTypeVAR {
+						ab.Spendable += utxoAmt
+					}
+				} else if creditFromCoinbase && !matureCoinbase {
+					// Update per-coin balance
+					coinBalance.ImmatureCoinbaseRewards += utxoAmt
+					// Update legacy VAR balance for backward compatibility
+					if coinType == cointype.CoinTypeVAR {
+						ab.ImmatureCoinbaseRewards += utxoAmt
+					}
+				}
+
+				// Update per-coin total
+				coinBalance.Total += utxoAmt
+				// Update legacy VAR total for backward compatibility
+				if coinType == cointype.CoinTypeVAR {
+					ab.Total += utxoAmt
+				}
+			case txscript.OP_SSTX:
 				// Update per-coin balance
-				coinBalance.Spendable += utxoAmt
+				coinBalance.VotingAuthority += utxoAmt
 				// Update legacy VAR balance for backward compatibility
 				if coinType == cointype.CoinTypeVAR {
-					ab.Spendable += utxoAmt
+					ab.VotingAuthority += utxoAmt
 				}
-			} else {
-				// Update per-coin balance
-				coinBalance.ImmatureStakeGeneration += utxoAmt
-				// Update legacy VAR balance for backward compatibility
+			case txscript.OP_SSGEN:
+				fallthrough
+			case txscript.OP_SSRTX:
+				if coinbaseMatured(s.chainParams, height, syncHeight) {
+					// Update per-coin balance
+					coinBalance.Spendable += utxoAmt
+					// Update legacy VAR balance for backward compatibility
+					if coinType == cointype.CoinTypeVAR {
+						ab.Spendable += utxoAmt
+					}
+				} else {
+					// Update per-coin balance
+					coinBalance.ImmatureStakeGeneration += utxoAmt
+					// Update legacy VAR balance for backward compatibility
+					if coinType == cointype.CoinTypeVAR {
+						ab.ImmatureStakeGeneration += utxoAmt
+					}
+				}
+
+				// Update per-coin total
+				coinBalance.Total += utxoAmt
+				// Update legacy VAR total for backward compatibility
 				if coinType == cointype.CoinTypeVAR {
-					ab.ImmatureStakeGeneration += utxoAmt
+					ab.Total += utxoAmt
 				}
+			case txscript.OP_SSTXCHANGE:
+				if ticketChangeMatured(s.chainParams, height, syncHeight) {
+					// Update per-coin balance
+					coinBalance.Spendable += utxoAmt
+					// Update legacy VAR balance for backward compatibility
+					if coinType == cointype.CoinTypeVAR {
+						ab.Spendable += utxoAmt
+					}
+				}
+
+				// Update per-coin total
+				coinBalance.Total += utxoAmt
+				// Update legacy VAR total for backward compatibility
+				if coinType == cointype.CoinTypeVAR {
+					ab.Total += utxoAmt
+				}
+			default:
+				log.Warnf("Unhandled opcode: %v", opcode)
 			}
 
-			// Update per-coin total
-			coinBalance.Total += utxoAmt
-			// Update legacy VAR total for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.Total += utxoAmt
-			}
-		case txscript.OP_SSTXCHANGE:
-			if ticketChangeMatured(s.chainParams, height, syncHeight) {
-				// Update per-coin balance
-				coinBalance.Spendable += utxoAmt
-				// Update legacy VAR balance for backward compatibility
-				if coinType == cointype.CoinTypeVAR {
-					ab.Spendable += utxoAmt
-				}
-			}
-
-			// Update per-coin total
-			coinBalance.Total += utxoAmt
-			// Update legacy VAR total for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.Total += utxoAmt
-			}
-		default:
-			log.Warnf("Unhandled opcode: %v", opcode)
+			// Store updated coin balance back to map
+			ab.CoinTypeBalances[coinType] = coinBalance
 		}
 
-		// Store updated coin balance back to map
-		ab.CoinTypeBalances[coinType] = coinBalance
+		c.Close()
 	}
 
-	c.Close()
+	// Process confirmed credits for active SKA coin types
+	for _, skaCoinType := range s.getActiveSKACoinTypes() {
+		skaBucket := ns.NestedReadBucket(bucketUnspentForCoinType(skaCoinType))
+		if skaBucket == nil {
+			continue
+		}
+		c := skaBucket.ReadCursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if existsRawUnminedInput(ns, k) != nil {
+				// Output is spent by an unmined transaction.
+				// Skip to next unmined credit.
+				continue
+			}
+
+			cKey := make([]byte, 72)
+			copy(cKey[0:32], k[0:32])   // Tx hash
+			copy(cKey[32:36], v[0:4])   // Block height
+			copy(cKey[36:68], v[4:36])  // Block hash
+			copy(cKey[68:72], k[32:36]) // Output index
+
+			cVal := existsRawCredit(ns, cKey)
+			if cVal == nil {
+				c.Close()
+				return nil, errors.E(errors.IO, "missing credit for unspent output")
+			}
+
+			// Check the account first.
+			pkScript, err := s.fastCreditPkScriptLookup(ns, cKey, nil)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+			thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, cVal, nil, pkScript)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+
+			utxoAmt, err := fetchRawCreditAmount(cVal)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+
+			height := extractRawCreditHeight(cKey)
+			opcode := fetchRawCreditTagOpCode(cVal)
+			coinType := fetchRawCreditCoinType(cVal)
+
+			ab, ok := accountBalances[thisAcct]
+			if !ok {
+				ab = &Balances{
+					Account:          thisAcct,
+					CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
+				}
+				accountBalances[thisAcct] = ab
+			}
+
+			// Ensure coin type balance entry exists
+			if _, exists := ab.CoinTypeBalances[coinType]; !exists {
+				ab.CoinTypeBalances[coinType] = CoinBalance{
+					CoinType: coinType,
+				}
+			}
+
+			// Get current coin type balance for modification
+			coinBalance := ab.CoinTypeBalances[coinType]
+
+			switch opcode {
+			case opNonstake:
+				// SKA transactions: emission, transfers - always spendable when confirmed
+				isConfirmed := confirmed(minConf, height, syncHeight)
+				if isConfirmed {
+					coinBalance.Spendable += utxoAmt
+				}
+				coinBalance.Total += utxoAmt
+			default:
+				// Skip VAR-specific opcodes for SKA coins (staking, coinbase, etc.)
+				log.Warnf("Unexpected opcode %v for SKA coin type %v", opcode, coinType)
+			}
+
+			// Store updated coin balance back to map
+			ab.CoinTypeBalances[coinType] = coinBalance
+		}
+
+		c.Close()
+	}
 
 	// Unconfirmed transaction output handling.
-	c = ns.NestedReadBucket(bucketUnminedCredits).ReadCursor()
-	defer c.Close()
-	for k, v := c.First(); k != nil; k, v = c.Next() {
-		// Make sure this output was not spent by an unmined transaction.
-		// If it was, skip this credit.
-		if existsRawUnminedInput(ns, k) != nil {
-			continue
-		}
-
-		// Check the account first.
-		pkScript, err := s.fastCreditPkScriptLookup(ns, nil, k)
-		if err != nil {
-			return nil, err
-		}
-		thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, nil, v, pkScript)
-		if err != nil {
-			return nil, err
-		}
-
-		utxoAmt, err := fetchRawUnminedCreditAmount(v)
-		if err != nil {
-			return nil, err
-		}
-
-		ab, ok := accountBalances[thisAcct]
-		if !ok {
-			ab = &Balances{
-				Account:          thisAcct,
-				CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
+	// Process coin-type specific unmined credit buckets
+	// First VAR bucket (most common)
+	varUnminedBucket := ns.NestedReadBucket(bucketUnminedCreditsForCoinType(cointype.CoinTypeVAR))
+	if varUnminedBucket != nil {
+		c := varUnminedBucket.ReadCursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if existsRawUnminedInput(ns, k) != nil {
+				continue
 			}
-			accountBalances[thisAcct] = ab
-		}
 
-		// Extract coin type from unmined credit
-		coinType := fetchRawUnminedCreditCoinType(v)
-
-		// Ensure coin type balance entry exists
-		if _, exists := ab.CoinTypeBalances[coinType]; !exists {
-			ab.CoinTypeBalances[coinType] = CoinBalance{
-				CoinType: coinType,
+			pkScript, err := s.fastCreditPkScriptLookup(ns, nil, k)
+			if err != nil {
+				c.Close()
+				return nil, err
 			}
-		}
+			thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, nil, v, pkScript)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
 
-		// Get current coin type balance for modification
-		coinBalance := ab.CoinTypeBalances[coinType]
+			utxoAmt, err := fetchRawUnminedCreditAmount(v)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
 
-		// Skip ticket outputs, as only SSGen can spend these.
-		opcode := fetchRawUnminedCreditTagOpCode(v)
-
-		txHash := k[:32]
-		unpublished := existsUnpublished(ns, txHash)
-
-		switch opcode {
-		case opNonstake:
-			if minConf == 0 && !unpublished {
-				// Update per-coin balance
-				coinBalance.Spendable += utxoAmt
-				// Update legacy VAR balance for backward compatibility
-				if coinType == cointype.CoinTypeVAR {
-					ab.Spendable += utxoAmt
+			ab, ok := accountBalances[thisAcct]
+			if !ok {
+				ab = &Balances{
+					Account:          thisAcct,
+					CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
 				}
-			} else if !fetchRawCreditIsCoinbase(v) {
-				// Update per-coin balance
-				coinBalance.Unconfirmed += utxoAmt
-				// Update legacy VAR balance for backward compatibility
-				if coinType == cointype.CoinTypeVAR {
-					ab.Unconfirmed += utxoAmt
+				accountBalances[thisAcct] = ab
+			}
+
+			coinType := fetchRawUnminedCreditCoinType(v)
+			if _, exists := ab.CoinTypeBalances[coinType]; !exists {
+				ab.CoinTypeBalances[coinType] = CoinBalance{
+					CoinType: coinType,
 				}
 			}
-			// Update per-coin total
-			coinBalance.Total += utxoAmt
-			// Update legacy VAR total for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.Total += utxoAmt
+
+			coinBalance := ab.CoinTypeBalances[coinType]
+			opcode := fetchRawUnminedCreditTagOpCode(v)
+			txHash := k[:32]
+			unpublished := existsUnpublished(ns, txHash)
+
+			switch opcode {
+			case opNonstake:
+				if minConf == 0 && !unpublished {
+					coinBalance.Spendable += utxoAmt
+					if coinType == cointype.CoinTypeVAR {
+						ab.Spendable += utxoAmt
+					}
+				} else if !fetchRawCreditIsCoinbase(v) {
+					coinBalance.Unconfirmed += utxoAmt
+					if coinType == cointype.CoinTypeVAR {
+						ab.Unconfirmed += utxoAmt
+					}
+				}
+				coinBalance.Total += utxoAmt
+				if coinType == cointype.CoinTypeVAR {
+					ab.Total += utxoAmt
+				}
+			case txscript.OP_SSTX:
+				coinBalance.VotingAuthority += utxoAmt
+				if coinType == cointype.CoinTypeVAR {
+					ab.VotingAuthority += utxoAmt
+				}
+			case txscript.OP_SSGEN:
+				fallthrough
+			case txscript.OP_SSRTX:
+				coinBalance.ImmatureStakeGeneration += utxoAmt
+				coinBalance.Total += utxoAmt
+				if coinType == cointype.CoinTypeVAR {
+					ab.ImmatureStakeGeneration += utxoAmt
+					ab.Total += utxoAmt
+				}
+			case txscript.OP_SSTXCHANGE:
+				coinBalance.Total += utxoAmt
+				if coinType == cointype.CoinTypeVAR {
+					ab.Total += utxoAmt
+				}
+				ab.CoinTypeBalances[coinType] = coinBalance
+				continue
+			case txscript.OP_TGEN:
+				// Only consider mined tspends for simpler balance accounting.
+			default:
+				log.Warnf("Unhandled unconfirmed opcode %v: %v", opcode, v)
 			}
-		case txscript.OP_SSTX:
-			// Update per-coin balance
-			coinBalance.VotingAuthority += utxoAmt
-			// Update legacy VAR balance for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.VotingAuthority += utxoAmt
-			}
-		case txscript.OP_SSGEN:
-			fallthrough
-		case txscript.OP_SSRTX:
-			// Update per-coin balance
-			coinBalance.ImmatureStakeGeneration += utxoAmt
-			coinBalance.Total += utxoAmt
-			// Update legacy VAR balance for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.ImmatureStakeGeneration += utxoAmt
-				ab.Total += utxoAmt
-			}
-		case txscript.OP_SSTXCHANGE:
-			// Update per-coin total
-			coinBalance.Total += utxoAmt
-			// Update legacy VAR total for backward compatibility
-			if coinType == cointype.CoinTypeVAR {
-				ab.Total += utxoAmt
-			}
-			// Store updated coin balance and continue
+
 			ab.CoinTypeBalances[coinType] = coinBalance
-			continue
-		case txscript.OP_TGEN:
-			// Only consider mined tspends for simpler balance
-			// accounting.
-		default:
-			log.Warnf("Unhandled unconfirmed opcode %v: %v", opcode, v)
 		}
+		c.Close()
+	}
 
-		// Store updated coin balance back to map
-		ab.CoinTypeBalances[coinType] = coinBalance
+	// Process other coin type unmined credits (active SKA types only)
+	for _, skaCoinType := range s.getActiveSKACoinTypes() {
+		skaBucket := ns.NestedReadBucket(bucketUnminedCreditsForCoinType(skaCoinType))
+		if skaBucket == nil {
+			continue
+		}
+		c := skaBucket.ReadCursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			if existsRawUnminedInput(ns, k) != nil {
+				continue
+			}
+
+			pkScript, err := s.fastCreditPkScriptLookup(ns, nil, k)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+			thisAcct, err := s.fetchAccountForPkScript(addrmgrNs, nil, v, pkScript)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+
+			utxoAmt, err := fetchRawUnminedCreditAmount(v)
+			if err != nil {
+				c.Close()
+				return nil, err
+			}
+
+			ab, ok := accountBalances[thisAcct]
+			if !ok {
+				ab = &Balances{
+					Account:          thisAcct,
+					CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
+				}
+				accountBalances[thisAcct] = ab
+			}
+
+			coinType := fetchRawUnminedCreditCoinType(v)
+			if _, exists := ab.CoinTypeBalances[coinType]; !exists {
+				ab.CoinTypeBalances[coinType] = CoinBalance{
+					CoinType: coinType,
+				}
+			}
+
+			coinBalance := ab.CoinTypeBalances[coinType]
+			coinBalance.Total += utxoAmt
+			ab.CoinTypeBalances[coinType] = coinBalance
+		}
+		c.Close()
 	}
 
 	// Account for ticket commitments by iterating over the unspent commitments
@@ -3984,7 +3971,8 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 		ab, ok := accountBalances[it.account]
 		if !ok {
 			ab = &Balances{
-				Account: it.account,
+				Account:          it.account,
+				CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
 			}
 			accountBalances[it.account] = ab
 		}
@@ -4028,7 +4016,7 @@ type Balances struct {
 }
 
 // AccountBalance returns a Balances struct for some given account at
-// syncHeight block height with all UTXOS that have minConf manyn confirms.
+// syncHeight block height with all UTXOS that have minConf many confirms.
 func (s *Store) AccountBalance(dbtx walletdb.ReadTx, minConf int32, account uint32) (Balances, error) {
 	balances, err := s.AccountBalances(dbtx, minConf)
 	if err != nil {
@@ -4039,7 +4027,8 @@ func (s *Store) AccountBalance(dbtx walletdb.ReadTx, minConf int32, account uint
 	if !ok {
 		// No balance for the account was found so must be zero.
 		return Balances{
-			Account: account,
+			Account:          account,
+			CoinTypeBalances: make(map[cointype.CoinType]CoinBalance),
 		}, nil
 	}
 

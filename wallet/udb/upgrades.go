@@ -15,6 +15,7 @@ import (
 	"github.com/decred/dcrd/blockchain/stake/v5"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/chaincfg/v3"
+	"github.com/decred/dcrd/cointype"
 	"github.com/decred/dcrd/dcrutil/v4"
 	"github.com/decred/dcrd/gcs/v4/blockcf2"
 	"github.com/decred/dcrd/hdkeychain/v3"
@@ -213,10 +214,15 @@ const (
 	// unspent indexes for efficient queries.
 	dualCoinVersion = 27
 
+	// coinTypeBucketsVersion is the 28th version of the database. It creates
+	// separate buckets for each coin type to enable efficient coin-type-specific
+	// UTXO queries without runtime filtering.
+	coinTypeBucketsVersion = 28
+
 	// DBVersion is the latest version of the database that is understood by the
 	// program.  Databases with recorded versions higher than this will fail to
 	// open (meaning any upgrades prevent reverting to older software).
-	DBVersion = dualCoinVersion
+	DBVersion = coinTypeBucketsVersion
 )
 
 // upgrades maps between old database versions and the upgrade function to
@@ -249,6 +255,7 @@ var upgrades = [...]func(walletdb.ReadWriteTx, []byte, *chaincfg.Params) error{
 	importVotingAccountVersion - 1:        importVotingAccountUpgrade,
 	birthBlockVersion - 1:                 birthBlockUpgrade,
 	dualCoinVersion - 1:                    dualCoinUpgrade,
+	coinTypeBucketsVersion - 1:             coinTypeBucketsUpgrade,
 }
 
 func lastUsedAddressIndexUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
@@ -1715,6 +1722,96 @@ func dualCoinUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *c
 	// This upgrade enables the new unmined credit format that includes coin type.
 	// New unmined credits will be created with the coin type field populated.
 	// Existing unmined credits will default to VAR when read for backward compatibility.
+
+	// Update the database version.
+	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)
+}
+
+// coinTypeBucketsUpgrade performs an upgrade from version 27 to 28. This upgrade creates
+// separate buckets for each coin type to enable efficient coin-type-specific
+// UTXO queries without runtime filtering.
+func coinTypeBucketsUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
+	const newVersion = 28
+
+	metadataBucket := tx.ReadWriteBucket(unifiedDBMetadata{}.rootBucketKey())
+	if metadataBucket == nil {
+		return errors.E(errors.IO, "missing metadata bucket")
+	}
+
+	txmgrBucket := tx.ReadWriteBucket(wtxmgrBucketKey)
+	if txmgrBucket == nil {
+		return errors.E(errors.IO, "missing transaction manager bucket")
+	}
+
+	// Create buckets for VAR (always exists)
+	_, err := txmgrBucket.CreateBucketIfNotExists(bucketUnspentForCoinType(cointype.CoinTypeVAR))
+	if err != nil {
+		return errors.E(errors.IO, err)
+	}
+	_, err = txmgrBucket.CreateBucketIfNotExists(bucketUnminedCreditsForCoinType(cointype.CoinTypeVAR))
+	if err != nil {
+		return errors.E(errors.IO, err)
+	}
+
+	// Migrate existing unspent outputs to coin-type specific buckets
+	unspentBucket := txmgrBucket.NestedReadBucket(bucketUnspent)
+	creditsBucket := txmgrBucket.NestedReadBucket(bucketCredits)
+
+	if unspentBucket != nil && creditsBucket != nil {
+		// Migrate mined unspent outputs
+		err = unspentBucket.ForEach(func(k, v []byte) error {
+			// Construct credit key to fetch coin type
+			if len(k) < 36 || len(v) < 36 {
+				return nil // Skip invalid entries
+			}
+			
+			credKey := make([]byte, 72)
+			copy(credKey, k[:32])
+			copy(credKey[32:68], v)
+			copy(credKey[68:72], k[32:36])
+			
+			cVal := creditsBucket.Get(credKey)
+			if cVal == nil {
+				return nil // Skip if credit not found
+			}
+
+			coinType := fetchRawCreditCoinType(cVal)
+
+			// Create bucket for this coin type if it doesn't exist
+			bucketName := bucketUnspentForCoinType(coinType)
+			targetBucket, err := txmgrBucket.CreateBucketIfNotExists(bucketName)
+			if err != nil {
+				return errors.E(errors.IO, err)
+			}
+
+			// Copy the UTXO to the coin-type specific bucket
+			return targetBucket.Put(k, v)
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	// Migrate unmined credits
+	unminedBucket := txmgrBucket.NestedReadBucket(bucketUnminedCredits)
+	if unminedBucket != nil {
+		err = unminedBucket.ForEach(func(k, v []byte) error {
+			coinType := fetchRawUnminedCreditCoinType(v)
+
+			// Create bucket for this coin type if it doesn't exist
+			bucketName := bucketUnminedCreditsForCoinType(coinType)
+			targetBucket, err := txmgrBucket.CreateBucketIfNotExists(bucketName)
+			if err != nil {
+				return errors.E(errors.IO, err)
+			}
+
+			// Copy the unmined credit to the coin-type specific bucket
+			return targetBucket.Put(k, v)
+		})
+		if err != nil {
+			return err
+		}
+	}
 
 	// Update the database version.
 	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)

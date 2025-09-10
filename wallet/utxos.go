@@ -24,7 +24,7 @@ import (
 type OutputSelectionPolicy struct {
 	Account               uint32
 	RequiredConfirmations int32
-	CoinType              *cointype.CoinType // Optional coin type filter
+	CoinType              cointype.CoinType // Required: transactions cannot mix coin types
 }
 
 func (p *OutputSelectionPolicy) meetsRequiredConfs(txHeight, curHeight int32) bool {
@@ -47,7 +47,7 @@ func (w *Wallet) UnspentOutputs(ctx context.Context, policy OutputSelectionPolic
 
 		// TODO: actually stream outputs from the db instead of fetching
 		// all of them at once.
-		outputs, err := w.txStore.UnspentOutputs(dbtx)
+		outputs, err := w.txStore.UnspentOutputs(dbtx, policy.CoinType)
 		if err != nil {
 			return err
 		}
@@ -76,8 +76,8 @@ func (w *Wallet) UnspentOutputs(ctx context.Context, policy OutputSelectionPolic
 				continue
 			}
 
-			// Filter by coin type if specified in policy
-			if policy.CoinType != nil && output.CoinType != *policy.CoinType {
+			// Filter by coin type - must match policy's coin type
+			if output.CoinType != policy.CoinType {
 				continue
 			}
 
@@ -135,8 +135,8 @@ func (w *Wallet) SelectInputs(ctx context.Context, targetAmount dcrutil.Amount, 
 			}
 		}
 
-		sourceImpl := w.txStore.MakeInputSource(dbtx, policy.Account,
-			policy.RequiredConfirmations, tipHeight, nil)
+		sourceImpl := w.txStore.MakeInputSourceWithCoinType(dbtx, policy.Account,
+			policy.RequiredConfirmations, tipHeight, nil, policy.CoinType)
 		var err error
 		inputDetail, err = sourceImpl.SelectInputs(targetAmount)
 		return err

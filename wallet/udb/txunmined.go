@@ -204,7 +204,7 @@ func (s *Store) RemoveUnconfirmed(ns walletdb.ReadWriteBucket, tx *wire.MsgTx, t
 				return err
 			}
 		}
-		err := deleteRawUnminedCredit(ns, k)
+		err := deleteRawUnminedCredit(ns, k, s.chainParams)
 		if err != nil {
 			return err
 		}

@@ -1203,7 +1203,7 @@ func (w *Wallet) LoadActiveDataFilters(ctx context.Context, n NetworkBackend, re
 	defer w.lockedOutpointMu.Unlock()
 	w.lockedOutpointMu.Lock()
 	err = walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
-		err := w.txStore.ForEachUnspentOutpoint(dbtx, watchOutPoint)
+		err := w.txStore.ForEachUnspentOutpoint(dbtx, nil, watchOutPoint) // nil = all coin types
 		if err != nil {
 			return err
 		}
@@ -3555,11 +3555,16 @@ func (w *Wallet) Accounts(ctx context.Context) (*AccountsResult, error) {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 
 		tipHash, tipHeight = w.txStore.MainChainTip(dbtx)
-		unspent, err := w.txStore.UnspentOutputs(dbtx)
-		if err != nil {
-			return err
+		// Get unspent outputs for all coin types
+		var unspent []*udb.Credit
+		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+			outputs, err := w.txStore.UnspentOutputs(dbtx, ct)
+			if err != nil {
+				return err
+			}
+			unspent = append(unspent, outputs...)
 		}
-		err = w.manager.ForEachAccount(addrmgrNs, func(acct uint32) error {
+		err := w.manager.ForEachAccount(addrmgrNs, func(acct uint32) error {
 			props, err := w.manager.AccountProperties(addrmgrNs, acct)
 			if err != nil {
 				return err
@@ -3656,9 +3661,14 @@ func (w *Wallet) ListUnspent(ctx context.Context, minconf, maxconf int32, addres
 		_, tipHeight := w.txStore.MainChainTip(dbtx)
 
 		filter := len(addresses) != 0
-		unspent, err := w.txStore.UnspentOutputs(dbtx)
-		if err != nil {
-			return err
+		// Get unspent outputs for all coin types
+		var unspent []*udb.Credit
+		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+			outputs, err := w.txStore.UnspentOutputs(dbtx, ct)
+			if err != nil {
+				return err
+			}
+			unspent = append(unspent, outputs...)
 		}
 		sort.Sort(sort.Reverse(creditSlice(unspent)))
 

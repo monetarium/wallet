@@ -144,7 +144,7 @@ func (s *Store) unminedTxDetails(ns walletdb.ReadBucket, txHash *chainhash.Hash,
 	for i, output := range details.MsgTx.TxIn {
 		opKey := canonicalOutPoint(&output.PreviousOutPoint.Hash,
 			output.PreviousOutPoint.Index)
-		credKey := existsRawUnspent(ns, opKey)
+		credKey := existsRawUnspent(ns, opKey, s.chainParams)
 		if credKey != nil {
 			v := existsRawCredit(ns, credKey)
 			amount, err := fetchRawCreditAmount(v)
@@ -159,7 +159,7 @@ func (s *Store) unminedTxDetails(ns walletdb.ReadBucket, txHash *chainhash.Hash,
 			continue
 		}
 
-		v := existsRawUnminedCredit(ns, opKey)
+		v := existsRawUnminedCredit(ns, opKey, s.chainParams)
 		if v == nil {
 			continue
 		}
@@ -301,11 +301,11 @@ func (s *Store) ExistsTxMinedOrUnmined(ns walletdb.ReadBucket, txHash *chainhash
 // output.
 func (s *Store) ExistsUTXO(dbtx walletdb.ReadTx, op *wire.OutPoint) bool {
 	ns := dbtx.ReadBucket(wtxmgrBucketKey)
-	k, v := existsUnspent(ns, op)
+	k, v := existsUnspent(ns, op, s.chainParams)
 	if v != nil {
 		return true
 	}
-	return existsRawUnminedCredit(ns, k) != nil
+	return existsRawUnminedCredit(ns, k, s.chainParams) != nil
 }
 
 // UniqueTxDetails looks up all recorded details for a transaction recorded
@@ -557,7 +557,7 @@ func (s *Store) PreviousPkScripts(ns walletdb.ReadBucket, rec *TxRecord, block *
 				// unmined transaction before including
 				// the output script.
 				k := canonicalOutPoint(&prevOut.Hash, prevOut.Index)
-				vUC := existsRawUnminedCredit(ns, k)
+				vUC := existsRawUnminedCredit(ns, k, s.chainParams)
 				if vUC == nil {
 					continue
 				}
@@ -579,7 +579,7 @@ func (s *Store) PreviousPkScripts(ns walletdb.ReadBucket, rec *TxRecord, block *
 				continue
 			}
 
-			_, credKey := existsUnspent(ns, prevOut)
+			_, credKey := existsUnspent(ns, prevOut, s.chainParams)
 			if credKey != nil {
 				credVal := existsRawCredit(ns, credKey)
 				if credVal == nil {
@@ -687,7 +687,7 @@ func (s *Store) Spender(dbtx walletdb.ReadTx, out *wire.OutPoint) (*wire.MsgTx, 
 	// if there is no credit.
 	if spenderHash == (chainhash.Hash{}) {
 		k = canonicalOutPoint(&out.Hash, out.Index)
-		v = existsRawUnminedCredit(ns, k)
+		v = existsRawUnminedCredit(ns, k, s.chainParams)
 		if v == nil {
 			return nil, 0, errors.E(errors.Invalid, "output is not a credit")
 		}

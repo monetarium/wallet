@@ -48,6 +48,7 @@ import (
 	"github.com/decred/dcrd/blockchain/stake/v5"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/chaincfg/v3"
+	"github.com/decred/dcrd/cointype"
 	"github.com/decred/dcrd/crypto/rand"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/decred/dcrd/dcrutil/v4"
@@ -1033,6 +1034,7 @@ func (s *walletServer) UnspentOutputs(req *pb.UnspentOutputsRequest, svr pb.Wall
 	policy := wallet.OutputSelectionPolicy{
 		Account:               req.Account,
 		RequiredConfirmations: req.RequiredConfirmations,
+		CoinType:              cointype.CoinTypeVAR, // Default to VAR for backward compatibility
 	}
 	inputDetail, err := s.wallet.SelectInputs(svr.Context(), dcrutil.Amount(req.TargetAmount), policy)
 	// Do not return errors to caller when there was insufficient spendable
@@ -1079,6 +1081,7 @@ func (s *walletServer) FundTransaction(ctx context.Context, req *pb.FundTransact
 	policy := wallet.OutputSelectionPolicy{
 		Account:               req.Account,
 		RequiredConfirmations: req.RequiredConfirmations,
+		CoinType:              cointype.CoinTypeVAR, // Default to VAR for backward compatibility
 	}
 	inputDetail, err := s.wallet.SelectInputs(ctx, dcrutil.Amount(req.TargetAmount), policy)
 	// Do not return errors to caller when there was insufficient spendable

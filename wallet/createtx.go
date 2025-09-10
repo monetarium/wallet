@@ -157,7 +157,7 @@ func (w *Wallet) NewUnsignedTransaction(ctx context.Context, outputs []*wire.TxO
 		// Dual-coin validation: Ensure all outputs and inputs have the same coin type
 		if len(authoredTx.Tx.TxOut) > 0 {
 			expectedCoinType := authoredTx.Tx.TxOut[0].CoinType
-			
+
 			// Validate all outputs have the same coin type
 			for i, txOut := range authoredTx.Tx.TxOut {
 				if txOut.CoinType != expectedCoinType {
@@ -456,14 +456,13 @@ func (w *Wallet) authorTx(ctx context.Context, op errors.Op, a *authorTx) error 
 
 		// Determine coin type from outputs for coin-type-aware UTXO selection
 		var inputSource udb.InputSource
+		txCoinType := cointype.CoinTypeVAR
 		if len(a.outputs) > 0 {
-			txCoinType := a.outputs[0].CoinType
+			txCoinType = a.outputs[0].CoinType
 			inputSource = w.txStore.MakeInputSourceWithCoinType(dbtx, a.account,
 				a.minconf, tipHeight, ignoreInput, txCoinType)
-		} else {
-			inputSource = w.txStore.MakeInputSource(dbtx, a.account,
-				a.minconf, tipHeight, ignoreInput)
 		}
+
 		var changeSource txauthor.ChangeSource
 		if a.isTreasury {
 			changeSource = &p2PKHTreasuryChangeSource{
@@ -1234,7 +1233,7 @@ func (w *Wallet) purchaseTickets(ctx context.Context, op errors.Op,
 	// This is a fundamental protocol constraint - tickets, votes, and revocations
 	// must use the native VAR currency for consensus participation
 	// Note: This check ensures no SKA coins can be used for staking
-	
+
 	// Ensure the minimum number of required confirmations is positive.
 	if req.MinConf < 0 {
 		return nil, errors.E(op, errors.Invalid, "negative minconf")
@@ -1810,7 +1809,7 @@ func (w *Wallet) findEligibleOutputs(dbtx walletdb.ReadTx, account uint32, minco
 
 	addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 
-	unspent, err := w.txStore.UnspentOutputs(dbtx)
+	unspent, err := w.txStore.UnspentOutputs(dbtx, coinType)
 	if err != nil {
 		return nil, err
 	}
@@ -1993,12 +1992,13 @@ func (w *Wallet) findEligibleOutputsAmount(dbtx walletdb.ReadTx, account uint32,
 	randTries := 0
 	maxTries := 0
 	if (amount != 0 || maxResults != 0) && minconf > 0 {
-		numUnspent := w.txStore.UnspentOutputCount(dbtx)
+		numUnspent := w.txStore.UnspentOutputCount(dbtx, nil) // nil = all coin types
 		log.Debugf("Unspent bucket k/v count: %v", numUnspent)
 		maxTries = numUnspent / 2
 	}
 	for ; randTries < maxTries; randTries++ {
-		output, err := w.txStore.RandomUTXO(dbtx, minconf, currentHeight)
+		// For random selection, default to VAR coin type
+		output, err := w.txStore.RandomUTXO(dbtx, minconf, currentHeight, cointype.CoinTypeVAR)
 		if err != nil {
 			return nil, err
 		}
@@ -2036,7 +2036,7 @@ func (w *Wallet) findEligibleOutputsAmount(dbtx walletdb.ReadTx, account uint32,
 	eligible = eligible[:0]
 	seen = nil
 	outTotal = 0
-	unspent, err := w.txStore.UnspentOutputs(dbtx)
+	unspent, err := w.txStore.UnspentOutputs(dbtx, coinType)
 	if err != nil {
 		return nil, err
 	}

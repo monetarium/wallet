@@ -13,6 +13,7 @@ import (
 	_ "decred.org/dcrwallet/v5/wallet/drivers/bdb"
 	"decred.org/dcrwallet/v5/wallet/walletdb"
 	"github.com/decred/dcrd/chaincfg/chainhash"
+	"github.com/decred/dcrd/cointype"
 	"github.com/decred/dcrd/dcrutil/v4"
 	"github.com/decred/dcrd/wire"
 )
@@ -283,7 +284,7 @@ func TestInsertsCreditsDebitsRollbacks(t *testing.T) {
 			}
 
 			// Check that unspent outputs match expected.
-			unspent, err := s.UnspentOutputs(dbtx)
+			unspent, err := s.UnspentOutputs(dbtx, cointype.CoinTypeVAR)
 			if err != nil {
 				t.Fatalf("%s: failed to fetch unspent outputs: %v", test.name, err)
 			}

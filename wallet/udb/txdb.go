@@ -8,6 +8,7 @@ package udb
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"runtime/debug"
 	"time"
 
@@ -151,6 +152,39 @@ var (
 	bucketTicketCommitments       = []byte("cmt")
 	bucketTicketCommitmentsUsp    = []byte("cmu")
 )
+
+// getActiveSKACoinTypesFromParams returns a slice of coin types that are configured
+// as active in the chain parameters. This is a standalone helper function for use
+// in functions that don't have access to the Store struct.
+func getActiveSKACoinTypesFromParams(chainParams *chaincfg.Params) []cointype.CoinType {
+	var activeCoinTypes []cointype.CoinType
+	if chainParams != nil && chainParams.SKACoins != nil {
+		for coinType, config := range chainParams.SKACoins {
+			if config.Active {
+				activeCoinTypes = append(activeCoinTypes, coinType)
+			}
+		}
+	}
+	return activeCoinTypes
+}
+
+// bucketUnspentForCoinType returns the bucket name for unspent outputs of a specific coin type.
+// VAR (CoinType 0) uses "u:0", SKA types use "u:1" to "u:255".
+func bucketUnspentForCoinType(coinType cointype.CoinType) []byte {
+	if coinType == cointype.CoinTypeVAR {
+		return []byte("u:0") // VAR unspent
+	}
+	return []byte(fmt.Sprintf("u:%d", coinType)) // SKA unspent (u:1 to u:255)
+}
+
+// bucketUnminedCreditsForCoinType returns the bucket name for unmined credits of a specific coin type.
+// VAR (CoinType 0) uses "mc:0", SKA types use "mc:1" to "mc:255".
+func bucketUnminedCreditsForCoinType(coinType cointype.CoinType) []byte {
+	if coinType == cointype.CoinTypeVAR {
+		return []byte("mc:0") // VAR unmined credits
+	}
+	return []byte(fmt.Sprintf("mc:%d", coinType)) // SKA unmined credits (mc:1 to mc:255)
+}
 
 // Root (namespace) bucket keys
 var (
@@ -1131,18 +1165,33 @@ func valueUnspent(block *Block) []byte {
 	return v
 }
 
-func putUnspent(ns walletdb.ReadWriteBucket, outPoint *wire.OutPoint, block *Block) error {
+func putUnspent(ns walletdb.ReadWriteBucket, outPoint *wire.OutPoint, block *Block, coinType cointype.CoinType) error {
 	k := canonicalOutPoint(&outPoint.Hash, outPoint.Index)
 	v := valueUnspent(block)
-	err := ns.NestedReadWriteBucket(bucketUnspent).Put(k, v)
+	
+	// Write to coin-type specific bucket only
+	bucketName := bucketUnspentForCoinType(coinType)
+	bucket := ns.NestedReadWriteBucket(bucketName)
+	if bucket == nil {
+		// Create bucket if it doesn't exist (for new coin types)
+		var err error
+		bucket, err = ns.CreateBucketIfNotExists(bucketName)
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+	}
+	
+	err := bucket.Put(k, v)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
+	
 	return nil
 }
 
-func putRawUnspent(ns walletdb.ReadWriteBucket, k, v []byte) error {
-	err := ns.NestedReadWriteBucket(bucketUnspent).Put(k, v)
+func putRawUnspent(ns walletdb.ReadWriteBucket, k, v []byte, coinType cointype.CoinType) error {
+	bucketName := bucketUnspentForCoinType(coinType)
+	err := ns.NestedReadWriteBucket(bucketName).Put(k, v)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
@@ -1161,19 +1210,66 @@ func readUnspentBlock(v []byte, block *Block) error {
 // existsUnspent returns the key for the unspent output and the corresponding
 // key for the credits bucket.  If there is no unspent output recorded, the
 // credit key is nil.
-func existsUnspent(ns walletdb.ReadBucket, outPoint *wire.OutPoint) (k, credKey []byte) {
+func existsUnspent(ns walletdb.ReadBucket, outPoint *wire.OutPoint, chainParams *chaincfg.Params) (k, credKey []byte) {
 	k = canonicalOutPoint(&outPoint.Hash, outPoint.Index)
-	credKey = existsRawUnspent(ns, k)
+	credKey = existsRawUnspent(ns, k, chainParams)
 	return k, credKey
 }
 
 // existsRawUnspent returns the credit key if there exists an output recorded
 // for the raw unspent key.  It returns nil if the k/v pair does not exist.
-func existsRawUnspent(ns walletdb.ReadBucket, k []byte) (credKey []byte) {
+// It checks coin-type specific buckets, starting with VAR for performance.
+func existsRawUnspent(ns walletdb.ReadBucket, k []byte, chainParams *chaincfg.Params) (credKey []byte) {
 	if len(k) < 36 {
 		return nil
 	}
-	v := ns.NestedReadBucket(bucketUnspent).Get(k)
+	
+	// Check VAR bucket first (most common coin type)
+	varBucket := ns.NestedReadBucket(bucketUnspentForCoinType(cointype.CoinTypeVAR))
+	if varBucket != nil {
+		v := varBucket.Get(k)
+		if v != nil && len(v) >= 36 {
+			credKey = make([]byte, 72)
+			copy(credKey, k[:32])
+			copy(credKey[32:68], v)
+			copy(credKey[68:72], k[32:36])
+			return credKey
+		}
+	}
+	
+	// Check active SKA coin type buckets only (much more efficient than checking all 255)
+	for _, ct := range getActiveSKACoinTypesFromParams(chainParams) {
+		bucket := ns.NestedReadBucket(bucketUnspentForCoinType(ct))
+		if bucket != nil {
+			v := bucket.Get(k)
+			if v != nil && len(v) >= 36 {
+				credKey = make([]byte, 72)
+				copy(credKey, k[:32])
+				copy(credKey[32:68], v)
+				copy(credKey[68:72], k[32:36])
+				return credKey
+			}
+		}
+	}
+	
+	return nil
+}
+
+// existsRawUnspentForCoinType returns the credit key if there exists an output recorded
+// for the raw unspent key in the coin-type specific bucket.  It returns nil if the k/v pair does not exist.
+func existsRawUnspentForCoinType(ns walletdb.ReadBucket, k []byte, coinType cointype.CoinType) (credKey []byte) {
+	if len(k) < 36 {
+		return nil
+	}
+	
+	bucketName := bucketUnspentForCoinType(coinType)
+	bucket := ns.NestedReadBucket(bucketName)
+	if bucket == nil {
+		// Bucket doesn't exist for this coin type
+		return nil
+	}
+	
+	v := bucket.Get(k)
 	if len(v) < 36 {
 		return nil
 	}
@@ -1184,11 +1280,18 @@ func existsRawUnspent(ns walletdb.ReadBucket, k []byte) (credKey []byte) {
 	return credKey
 }
 
-func deleteRawUnspent(ns walletdb.ReadWriteBucket, k []byte) error {
-	err := ns.NestedReadWriteBucket(bucketUnspent).Delete(k)
-	if err != nil {
-		return errors.E(errors.IO, err)
+func deleteRawUnspent(ns walletdb.ReadWriteBucket, k []byte, coinType cointype.CoinType) error {
+	// Delete from coin-type specific bucket
+	bucketName := bucketUnspentForCoinType(coinType)
+	bucket := ns.NestedReadWriteBucket(bucketName)
+	if bucket != nil {
+		err := bucket.Delete(k)
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
 	}
+	
+	// Note: Not deleting from legacy bucket since we're not using it anymore
 	return nil
 }
 
@@ -1533,7 +1636,10 @@ func valueUnminedCredit(amount dcrutil.Amount, change bool, opCode uint8,
 }
 
 func putRawUnminedCredit(ns walletdb.ReadWriteBucket, k, v []byte) error {
-	err := ns.NestedReadWriteBucket(bucketUnminedCredits).Put(k, v)
+	// Extract coin type from the value to determine which bucket to use
+	coinType := fetchRawUnminedCreditCoinType(v)
+	bucketName := bucketUnminedCreditsForCoinType(coinType)
+	err := ns.NestedReadWriteBucket(bucketName).Put(k, v)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
@@ -1622,15 +1728,54 @@ func fetchRawUnminedCreditCoinType(v []byte) cointype.CoinType {
 	return coinType
 }
 
-func existsRawUnminedCredit(ns walletdb.ReadBucket, k []byte) []byte {
-	return ns.NestedReadBucket(bucketUnminedCredits).Get(k)
+func existsRawUnminedCredit(ns walletdb.ReadBucket, k []byte, chainParams *chaincfg.Params) []byte {
+	// Check VAR bucket first (most common)
+	varBucket := ns.NestedReadBucket(bucketUnminedCreditsForCoinType(cointype.CoinTypeVAR))
+	if varBucket != nil {
+		if v := varBucket.Get(k); v != nil {
+			return v
+		}
+	}
+	
+	// Check active SKA coin type buckets only
+	for _, ct := range getActiveSKACoinTypesFromParams(chainParams) {
+		bucket := ns.NestedReadBucket(bucketUnminedCreditsForCoinType(ct))
+		if bucket != nil {
+			if v := bucket.Get(k); v != nil {
+				return v
+			}
+		}
+	}
+	
+	return nil
 }
 
-func deleteRawUnminedCredit(ns walletdb.ReadWriteBucket, k []byte) error {
-	err := ns.NestedReadWriteBucket(bucketUnminedCredits).Delete(k)
-	if err != nil {
-		return errors.E(errors.IO, err)
+func deleteRawUnminedCredit(ns walletdb.ReadWriteBucket, k []byte, chainParams *chaincfg.Params) error {
+	// Try to delete from all coin type buckets where it might exist
+	// Start with VAR (most common)
+	varBucket := ns.NestedReadWriteBucket(bucketUnminedCreditsForCoinType(cointype.CoinTypeVAR))
+	if varBucket != nil {
+		if v := varBucket.Get(k); v != nil {
+			if err := varBucket.Delete(k); err != nil {
+				return errors.E(errors.IO, err)
+			}
+			return nil
+		}
 	}
+	
+	// Check active SKA coin type buckets only
+	for _, ct := range getActiveSKACoinTypesFromParams(chainParams) {
+		bucket := ns.NestedReadWriteBucket(bucketUnminedCreditsForCoinType(ct))
+		if bucket != nil {
+			if v := bucket.Get(k); v != nil {
+				if err := bucket.Delete(k); err != nil {
+					return errors.E(errors.IO, err)
+				}
+				return nil
+			}
+		}
+	}
+	
 	return nil
 }
 
@@ -2276,6 +2421,7 @@ func createStore(ns walletdb.ReadWriteBucket, chainParams *chaincfg.Params) erro
 		return errors.E(errors.IO, err)
 	}
 
+	// DEPRECATED: Old unified bucket for unspent outputs - kept for migration
 	_, err = ns.CreateBucket(bucketUnspent)
 	if err != nil {
 		return errors.E(errors.IO, err)
@@ -2286,6 +2432,7 @@ func createStore(ns walletdb.ReadWriteBucket, chainParams *chaincfg.Params) erro
 		return errors.E(errors.IO, err)
 	}
 
+	// DEPRECATED: Old unified bucket for unmined credits - kept for migration
 	_, err = ns.CreateBucket(bucketUnminedCredits)
 	if err != nil {
 		return errors.E(errors.IO, err)
