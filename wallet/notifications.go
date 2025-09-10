@@ -183,14 +183,27 @@ func makeTxSummary(dbtx walletdb.ReadTx, w *Wallet, details *udb.TxDetails) Tran
 
 func totalBalances(dbtx walletdb.ReadTx, w *Wallet, m map[uint32]dcrutil.Amount) error {
 	addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
-	// Get unspent outputs for all coin types
+	// Get unspent outputs for active coin types
 	var unspent []*udb.Credit
-	for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
-		outputs, err := w.txStore.UnspentOutputs(dbtx, ct)
-		if err != nil {
-			return err
+	
+	// Get VAR outputs (always active)
+	outputs, err := w.txStore.UnspentOutputs(dbtx, cointype.CoinTypeVAR)
+	if err != nil {
+		return err
+	}
+	unspent = append(unspent, outputs...)
+	
+	// Get outputs for active SKA coin types only
+	if w.chainParams != nil && w.chainParams.SKACoins != nil {
+		for coinType, config := range w.chainParams.SKACoins {
+			if config.Active {
+				outputs, err := w.txStore.UnspentOutputs(dbtx, coinType)
+				if err != nil {
+					return err
+				}
+				unspent = append(unspent, outputs...)
+			}
 		}
-		unspent = append(unspent, outputs...)
 	}
 	for i := range unspent {
 		output := unspent[i]
