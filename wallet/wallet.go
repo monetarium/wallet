@@ -1992,19 +1992,17 @@ func (w *Wallet) AccountBalances(ctx context.Context, confirms int32) ([]Balance
 func (w *Wallet) AccountBalanceByCoinType(ctx context.Context, account uint32, coinType cointype.CoinType, confirms int32) (CoinBalance, error) {
 	const op errors.Op = "wallet.AccountBalanceByCoinType"
 
-	// Get full account balance
-	balance, err := w.AccountBalance(ctx, account, confirms)
+	// Use the efficient direct method that only processes the specified coin type
+	var balance CoinBalance
+	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
+		var err error
+		balance, err = w.txStore.AccountBalanceByCoinType(dbtx, confirms, account, coinType)
+		return err
+	})
 	if err != nil {
 		return CoinBalance{}, errors.E(op, err)
 	}
-
-	// Return specific coin type balance
-	if coinBalance, exists := balance.CoinTypeBalances[coinType]; exists {
-		return coinBalance, nil
-	}
-
-	// Return empty balance if coin type not found
-	return CoinBalance{CoinType: coinType}, nil
+	return balance, nil
 }
 
 // AccountBalancesByCoinType returns balance breakdowns for all accounts
@@ -2012,22 +2010,23 @@ func (w *Wallet) AccountBalanceByCoinType(ctx context.Context, account uint32, c
 func (w *Wallet) AccountBalancesByCoinType(ctx context.Context, coinType cointype.CoinType, confirms int32) ([]CoinBalance, error) {
 	const op errors.Op = "wallet.AccountBalancesByCoinType"
 
-	// Get all account balances
-	balances, err := w.AccountBalances(ctx, confirms)
+	var coinBalances []CoinBalance
+	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
+		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
+		
+		// Get all accounts and fetch balance for each
+		return w.manager.ForEachAccount(addrmgrNs, func(acct uint32) error {
+			balance, err := w.txStore.AccountBalanceByCoinType(dbtx, confirms, acct, coinType)
+			if err != nil {
+				return err
+			}
+			coinBalances = append(coinBalances, balance)
+			return nil
+		})
+	})
 	if err != nil {
 		return nil, errors.E(op, err)
 	}
-
-	var coinBalances []CoinBalance
-	for _, balance := range balances {
-		if coinBalance, exists := balance.CoinTypeBalances[coinType]; exists {
-			coinBalances = append(coinBalances, coinBalance)
-		} else {
-			// Add empty balance for accounts without this coin type
-			coinBalances = append(coinBalances, CoinBalance{CoinType: coinType})
-		}
-	}
-
 	return coinBalances, nil
 }
 
@@ -2050,22 +2049,34 @@ func (w *Wallet) AccountBalancesByCoinType(ctx context.Context, coinType cointyp
 func (w *Wallet) TotalBalanceByCoinType(ctx context.Context, coinType cointype.CoinType, confirms int32) (CoinBalance, error) {
 	const op errors.Op = "wallet.TotalBalanceByCoinType"
 
-	coinBalances, err := w.AccountBalancesByCoinType(ctx, coinType, confirms)
-	if err != nil {
-		return CoinBalance{}, errors.E(op, err)
-	}
-
+	// Use the efficient method that directly queries each account for the specific coin type
 	var total CoinBalance
 	total.CoinType = coinType
 
-	for _, balance := range coinBalances {
-		total.ImmatureCoinbaseRewards += balance.ImmatureCoinbaseRewards
-		total.ImmatureStakeGeneration += balance.ImmatureStakeGeneration
-		total.LockedByTickets += balance.LockedByTickets
-		total.Spendable += balance.Spendable
-		total.Total += balance.Total
-		total.VotingAuthority += balance.VotingAuthority
-		total.Unconfirmed += balance.Unconfirmed
+	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
+		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
+		
+		// Iterate through all accounts and sum up balances for the specific coin type
+		return w.manager.ForEachAccount(addrmgrNs, func(acct uint32) error {
+			balance, err := w.txStore.AccountBalanceByCoinType(dbtx, confirms, acct, coinType)
+			if err != nil {
+				return err
+			}
+			
+			// Sum up all balance fields
+			total.ImmatureCoinbaseRewards += balance.ImmatureCoinbaseRewards
+			total.ImmatureStakeGeneration += balance.ImmatureStakeGeneration
+			total.LockedByTickets += balance.LockedByTickets
+			total.Spendable += balance.Spendable
+			total.Total += balance.Total
+			total.VotingAuthority += balance.VotingAuthority
+			total.Unconfirmed += balance.Unconfirmed
+			
+			return nil
+		})
+	})
+	if err != nil {
+		return CoinBalance{}, errors.E(op, err)
 	}
 
 	return total, nil
@@ -2089,26 +2100,51 @@ func (w *Wallet) TotalBalanceByCoinType(ctx context.Context, coinType cointype.C
 func (w *Wallet) ListCoinTypes(ctx context.Context, confirms int32) ([]cointype.CoinType, error) {
 	const op errors.Op = "wallet.ListCoinTypes"
 
-	balances, err := w.AccountBalances(ctx, confirms)
+	var coinTypes []cointype.CoinType
+	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
+		ns := dbtx.ReadBucket(wtxmgrNamespaceKey)
+		
+		// Check VAR bucket first (always present)
+		varBucket := ns.NestedReadBucket([]byte("u:0")) // bucketUnspentForCoinType(cointype.CoinTypeVAR)
+		if varBucket != nil && varBucket.KeyN() > 0 {
+			coinTypes = append(coinTypes, cointype.CoinTypeVAR)
+		}
+		
+		// Check only active SKA coin types from chain params
+		if w.chainParams != nil && w.chainParams.SKACoins != nil {
+			for coinType, config := range w.chainParams.SKACoins {
+				if !config.Active {
+					continue
+				}
+				
+				// Check if this coin type has any unspent outputs or unmined credits
+				bucketName := fmt.Sprintf("u:%d", coinType)
+				bucket := ns.NestedReadBucket([]byte(bucketName))
+				if bucket != nil && bucket.KeyN() > 0 {
+					coinTypes = append(coinTypes, coinType)
+					continue
+				}
+				
+				// Also check unmined credits
+				unminedBucketName := fmt.Sprintf("mc:%d", coinType)
+				unminedBucket := ns.NestedReadBucket([]byte(unminedBucketName))
+				if unminedBucket != nil && unminedBucket.KeyN() > 0 {
+					coinTypes = append(coinTypes, coinType)
+				}
+			}
+		}
+		
+		return nil
+	})
 	if err != nil {
 		return nil, errors.E(op, err)
 	}
-
-	coinTypesMap := make(map[cointype.CoinType]bool)
-	for _, balance := range balances {
-		for coinType, coinBalance := range balance.CoinTypeBalances {
-			// Only include coin types with non-zero total balance
-			if coinBalance.Total > 0 {
-				coinTypesMap[coinType] = true
-			}
-		}
-	}
-
-	var coinTypes []cointype.CoinType
-	for coinType := range coinTypesMap {
-		coinTypes = append(coinTypes, coinType)
-	}
-
+	
+	// Sort coin types in ascending order
+	sort.Slice(coinTypes, func(i, j int) bool {
+		return coinTypes[i] < coinTypes[j]
+	})
+	
 	return coinTypes, nil
 }
 
