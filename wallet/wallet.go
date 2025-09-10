@@ -3570,6 +3570,24 @@ type AccountsResult struct {
 	CurrentBlockHeight int32
 }
 
+// getActiveCoinTypes returns a slice containing VAR (coin type 0) plus all
+// active SKA coin types configured in the chain parameters. This replaces
+// inefficient loops that iterate through all 256 possible coin types.
+func (w *Wallet) getActiveCoinTypes() []cointype.CoinType {
+	activeCoinTypes := []cointype.CoinType{cointype.CoinType(0)} // Always include VAR
+	
+	// Add active SKA coin types from chain parameters
+	if w.chainParams != nil && w.chainParams.SKACoins != nil {
+		for coinType, config := range w.chainParams.SKACoins {
+			if config != nil {
+				activeCoinTypes = append(activeCoinTypes, coinType)
+			}
+		}
+	}
+	
+	return activeCoinTypes
+}
+
 // Accounts returns the current names, numbers, and total balances of all
 // accounts in the wallet.  The current chain tip is included in the result for
 // atomicity reasons.
@@ -3591,9 +3609,9 @@ func (w *Wallet) Accounts(ctx context.Context) (*AccountsResult, error) {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 
 		tipHash, tipHeight = w.txStore.MainChainTip(dbtx)
-		// Get unspent outputs for all coin types
+		// Get unspent outputs for active coin types only
 		var unspent []*udb.Credit
-		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+		for _, ct := range w.getActiveCoinTypes() {
 			outputs, err := w.txStore.UnspentOutputs(dbtx, ct)
 			if err != nil {
 				return err
@@ -3697,9 +3715,9 @@ func (w *Wallet) ListUnspent(ctx context.Context, minconf, maxconf int32, addres
 		_, tipHeight := w.txStore.MainChainTip(dbtx)
 
 		filter := len(addresses) != 0
-		// Get unspent outputs for all coin types
+		// Get unspent outputs for active coin types only
 		var unspent []*udb.Credit
-		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+		for _, ct := range w.getActiveCoinTypes() {
 			outputs, err := w.txStore.UnspentOutputs(dbtx, ct)
 			if err != nil {
 				return err
