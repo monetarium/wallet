@@ -196,6 +196,14 @@ func (s *Store) getActiveSKACoinTypes() []cointype.CoinType {
 	return activeCoinTypes
 }
 
+// getAllActiveCoinTypes returns VAR (coin type 0) plus all active SKA coin types.
+// This is useful for operations that need to iterate over all active coin types.
+func (s *Store) getAllActiveCoinTypes() []cointype.CoinType {
+	activeCoinTypes := []cointype.CoinType{cointype.CoinType(0)} // Always include VAR
+	activeCoinTypes = append(activeCoinTypes, s.getActiveSKACoinTypes()...)
+	return activeCoinTypes
+}
+
 // MainChainTip returns the hash and height of the currently marked tip-most
 // block of the main chain.
 func (s *Store) MainChainTip(dbtx walletdb.ReadTx) (chainhash.Hash, int32) {
@@ -2692,8 +2700,8 @@ func (s *Store) ForEachUnspentOutpoint(dbtx walletdb.ReadTx, coinType *cointype.
 	// Determine which buckets to iterate based on coinType parameter
 	var buckets [][]byte
 	if coinType == nil {
-		// Iterate all coin type buckets (0-255)
-		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+		// Iterate only active coin type buckets (VAR + active SKA)
+		for _, ct := range s.getAllActiveCoinTypes() {
 			bucketName := bucketUnspentForCoinType(ct)
 			if ns.NestedReadBucket(bucketName) != nil {
 				buckets = append(buckets, bucketName)
@@ -2751,8 +2759,8 @@ func (s *Store) ForEachUnspentOutpoint(dbtx walletdb.ReadTx, coinType *cointype.
 	// Iterate through unmined credits
 	var unminedBuckets [][]byte
 	if coinType == nil {
-		// Iterate all coin type unmined buckets (0-255)
-		for ct := cointype.CoinType(0); ct <= cointype.CoinTypeMax; ct++ {
+		// Iterate only active coin type unmined buckets (VAR + active SKA)
+		for _, ct := range s.getAllActiveCoinTypes() {
 			bucketName := bucketUnminedCreditsForCoinType(ct)
 			if ns.NestedReadBucket(bucketName) != nil {
 				unminedBuckets = append(unminedBuckets, bucketName)
