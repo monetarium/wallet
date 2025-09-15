@@ -1191,7 +1191,18 @@ func putUnspent(ns walletdb.ReadWriteBucket, outPoint *wire.OutPoint, block *Blo
 
 func putRawUnspent(ns walletdb.ReadWriteBucket, k, v []byte, coinType cointype.CoinType) error {
 	bucketName := bucketUnspentForCoinType(coinType)
-	err := ns.NestedReadWriteBucket(bucketName).Put(k, v)
+
+	// Get or create bucket on-demand
+	bucket := ns.NestedReadWriteBucket(bucketName)
+	if bucket == nil {
+		var err error
+		bucket, err = ns.CreateBucketIfNotExists(bucketName)
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+	}
+
+	err := bucket.Put(k, v)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
@@ -1614,7 +1625,18 @@ func putRawUnminedCredit(ns walletdb.ReadWriteBucket, k, v []byte) error {
 	// Extract coin type from the value to determine which bucket to use
 	coinType := fetchRawUnminedCreditCoinType(v)
 	bucketName := bucketUnminedCreditsForCoinType(coinType)
-	err := ns.NestedReadWriteBucket(bucketName).Put(k, v)
+
+	// Get or create bucket on-demand
+	bucket := ns.NestedReadWriteBucket(bucketName)
+	if bucket == nil {
+		var err error
+		bucket, err = ns.CreateBucketIfNotExists(bucketName)
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+	}
+
+	err := bucket.Put(k, v)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
@@ -2269,7 +2291,17 @@ func valueUnspentTicketCommitment(unminedSpent bool) []byte {
 }
 
 func putRawUnspentTicketCommitment(ns walletdb.ReadWriteBucket, k, v []byte) error {
-	err := ns.NestedReadWriteBucket(bucketTicketCommitmentsUsp).Put(k, v)
+	// Get or create bucket on-demand
+	bucket := ns.NestedReadWriteBucket(bucketTicketCommitmentsUsp)
+	if bucket == nil {
+		var err error
+		bucket, err = ns.CreateBucketIfNotExists(bucketTicketCommitmentsUsp)
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+	}
+
+	err := bucket.Put(k, v)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
@@ -2277,7 +2309,12 @@ func putRawUnspentTicketCommitment(ns walletdb.ReadWriteBucket, k, v []byte) err
 }
 
 func deleteRawUnspentTicketCommitment(ns walletdb.ReadWriteBucket, k []byte) error {
-	err := ns.NestedReadWriteBucket(bucketTicketCommitmentsUsp).Delete(k)
+	bucket := ns.NestedReadWriteBucket(bucketTicketCommitmentsUsp)
+	if bucket == nil {
+		// Bucket doesn't exist, nothing to delete
+		return nil
+	}
+	err := bucket.Delete(k)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
