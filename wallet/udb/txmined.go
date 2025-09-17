@@ -4047,14 +4047,14 @@ func (s *Store) AccountBalances(dbtx walletdb.ReadTx, minConf int32) (map[uint32
 // processes outputs for the specified coin type.
 func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, account uint32, coinType cointype.CoinType) (CoinBalance, error) {
 	_, syncHeight := s.MainChainTip(dbtx)
-	
+
 	ns := dbtx.ReadBucket(wtxmgrBucketKey)
 	addrmgrNs := dbtx.ReadBucket(waddrmgrBucketKey)
-	
+
 	balance := CoinBalance{
 		CoinType: coinType,
 	}
-	
+
 	// Process confirmed credits for specified coin type
 	bucketName := bucketUnspentForCoinType(coinType)
 	bucket := ns.NestedReadBucket(bucketName)
@@ -4065,19 +4065,19 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 				// Output is spent by an unmined transaction.
 				continue
 			}
-			
+
 			cKey := make([]byte, 72)
 			copy(cKey[0:32], k[0:32])   // Tx hash
 			copy(cKey[32:36], v[0:4])   // Block height
 			copy(cKey[36:68], v[4:36])  // Block hash
 			copy(cKey[68:72], k[32:36]) // Output index
-			
+
 			cVal := existsRawCredit(ns, cKey)
 			if cVal == nil {
 				c.Close()
 				return balance, errors.E(errors.IO, "missing credit for unspent output")
 			}
-			
+
 			// Check the account
 			pkScript, err := s.fastCreditPkScriptLookup(ns, cKey, nil)
 			if err != nil {
@@ -4092,16 +4092,16 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 			if account != thisAcct {
 				continue
 			}
-			
+
 			utxoAmt, err := fetchRawCreditAmount(cVal)
 			if err != nil {
 				c.Close()
 				return balance, err
 			}
-			
+
 			height := extractRawCreditHeight(cKey)
 			opcode := fetchRawCreditTagOpCode(cVal)
-			
+
 			switch opcode {
 			case txscript.OP_TGEN:
 				fallthrough
@@ -4110,17 +4110,17 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 				creditFromCoinbase := fetchRawCreditIsCoinbase(cVal)
 				matureCoinbase := (creditFromCoinbase &&
 					coinbaseMatured(s.chainParams, height, syncHeight))
-				
+
 				if (isConfirmed && !creditFromCoinbase) || matureCoinbase {
 					balance.Spendable += utxoAmt
 				} else if creditFromCoinbase && !matureCoinbase {
 					balance.ImmatureCoinbaseRewards += utxoAmt
 				}
 				balance.Total += utxoAmt
-				
+
 			case txscript.OP_SSTX:
 				balance.VotingAuthority += utxoAmt
-				
+
 			case txscript.OP_SSGEN:
 				fallthrough
 			case txscript.OP_SSRTX:
@@ -4130,20 +4130,20 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 					balance.ImmatureStakeGeneration += utxoAmt
 				}
 				balance.Total += utxoAmt
-				
+
 			case txscript.OP_SSTXCHANGE:
 				if ticketChangeMatured(s.chainParams, height, syncHeight) {
 					balance.Spendable += utxoAmt
 				}
 				balance.Total += utxoAmt
-				
+
 			default:
 				log.Warnf("Unhandled opcode: %v", opcode)
 			}
 		}
 		c.Close()
 	}
-	
+
 	// Process unmined credits for specified coin type
 	if minConf == 0 {
 		unminedBucketName := bucketUnminedCreditsForCoinType(coinType)
@@ -4151,6 +4151,13 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 		if unminedBucket != nil {
 			c := unminedBucket.ReadCursor()
 			for k, v := c.First(); k != nil; k, v = c.Next() {
+				// Check if this output is spent by an unmined transaction
+				if existsRawUnminedInput(ns, k) != nil {
+					// Output is spent by an unmined transaction.
+					// Skip to next unmined credit.
+					continue
+				}
+
 				// Check account
 				pkScript, err := s.fastCreditPkScriptLookup(ns, nil, k)
 				if err != nil {
@@ -4165,7 +4172,7 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 				if account != thisAcct {
 					continue
 				}
-				
+
 				// Add to unconfirmed balance
 				amt, err := fetchRawUnminedCreditAmount(v)
 				if err != nil {
@@ -4173,11 +4180,12 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 					return balance, err
 				}
 				balance.Unconfirmed += amt
+				balance.Total += amt
 			}
 			c.Close()
 		}
 	}
-	
+
 	// Process tickets for VAR coin type only (tickets are always VAR)
 	if coinType == cointype.CoinTypeVAR {
 		// Account for ticket commitments using the unspent ticket commits iterator
@@ -4186,12 +4194,12 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 			if it.err != nil {
 				return balance, it.err
 			}
-			
+
 			if it.unminedSpent {
 				// Some unmined tx is redeeming this commitment, so ignore it
 				continue
 			}
-			
+
 			// Only include if it's for the requested account
 			if it.account == account {
 				balance.LockedByTickets += it.amount
@@ -4200,6 +4208,6 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 		}
 		it.close()
 	}
-	
+
 	return balance, nil
 }

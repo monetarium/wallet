@@ -575,3 +575,133 @@ func TestCoinbases(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestUnconfirmedBalanceTicketPurchase tests that unconfirmed balance is correctly calculated
+// during ticket purchases, ensuring spent inputs are not double-counted.
+func TestUnconfirmedBalanceTicketPurchase(t *testing.T) {
+	ctx := context.Background()
+	db, _, s, teardown, err := cloneDB(ctx, "ticket_purchase_balance.kv")
+	defer teardown()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const account = 0
+	const initialAmount = 10e8 // 10 DCR
+
+	// Create initial transaction that provides spendable funds
+	initialTx := wire.MsgTx{
+		TxOut: []*wire.TxOut{{
+			Value:    initialAmount,
+			CoinType: cointype.CoinTypeVAR,
+		}},
+	}
+	initialTxRec, err := NewTxRecordFromMsgTx(&initialTx, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = walletdb.Update(ctx, db, func(dbtx walletdb.ReadWriteTx) error {
+		// Insert initial transaction as unmined
+		err = s.InsertMemPoolTx(dbtx, initialTxRec)
+		if err != nil {
+			return err
+		}
+
+		// Mark output as credit
+		err = s.AddCredit(dbtx, initialTxRec, nil, 0, false, account)
+		if err != nil {
+			return err
+		}
+
+		// Create a spending transaction that simulates a ticket purchase
+		// In a real ticket purchase:
+		// - The ticket commitment is 20000 atoms (0.0002 DCR)
+		// - The ticket transaction fee is 3010 atoms
+		// - Total ticket output: 23010 atoms
+		// - Additional tx fee: 2550 atoms
+		const ticketPrice = 23010 // 0.0002301 DCR (includes commitment + ticket fee)
+		const feeAmount = 2550    // 0.0000255 DCR (transaction fee)
+		const changeAmount = initialAmount - ticketPrice - feeAmount
+
+		// Create a simple spending transaction
+		// Since we're not creating a proper stake transaction with OP_SSTX scripts,
+		// the system won't recognize this as a ticket and won't lock the funds.
+		// This test is really about verifying unconfirmed balance calculation.
+		spendingTx := wire.MsgTx{
+			TxIn: []*wire.TxIn{{
+				PreviousOutPoint: wire.OutPoint{
+					Hash:  initialTx.TxHash(),
+					Index: 0,
+					Tree:  wire.TxTreeRegular,
+				},
+			}},
+			TxOut: []*wire.TxOut{
+				{
+					Value:    ticketPrice,
+					CoinType: cointype.CoinTypeVAR, // Output to another address (simulating ticket)
+				},
+				{
+					Value:    changeAmount,
+					CoinType: cointype.CoinTypeVAR, // Change back to wallet
+				},
+			},
+		}
+		spendingTxRec, err := NewTxRecordFromMsgTx(&spendingTx, time.Time{})
+		if err != nil {
+			return err
+		}
+
+		// Insert spending transaction as unmined
+		err = s.InsertMemPoolTx(dbtx, spendingTxRec)
+		if err != nil {
+			return err
+		}
+
+		// Mark change output as credit (index 1) - this is ours
+		err = s.AddCredit(dbtx, spendingTxRec, nil, 1, true, account)
+		if err != nil {
+			return err
+		}
+
+		// Don't mark the first output as credit since it's not ours
+		// (simulating it going to a ticket commitment)
+		if err != nil {
+			return err
+		}
+
+		// Check balances - this is where the bug would manifest
+		balance, err := s.AccountBalanceByCoinType(dbtx, 0, account, cointype.CoinTypeVAR)
+		if err != nil {
+			return err
+		}
+
+		// The unconfirmed balance should only include the change amount, not the original amount
+		// The original input is spent (pending) so it shouldn't be counted
+		expectedUnconfirmed := dcrutil.Amount(changeAmount)
+		if balance.Unconfirmed != expectedUnconfirmed {
+			t.Errorf("Incorrect unconfirmed balance: got %v, expected %v", balance.Unconfirmed, expectedUnconfirmed)
+		}
+
+		// Since we're not creating a real ticket (no OP_SSTX script), funds won't be locked
+		// LockedByTickets should be 0
+		expectedLocked := dcrutil.Amount(0)
+		if balance.LockedByTickets != expectedLocked {
+			t.Errorf("Incorrect locked by tickets: got %v, expected %v", balance.LockedByTickets, expectedLocked)
+		}
+
+		// Total should only be the change amount we control
+		expectedTotal := dcrutil.Amount(changeAmount)
+		if balance.Total != expectedTotal {
+			t.Errorf("Incorrect total balance: got %v, expected %v", balance.Total, expectedTotal)
+		}
+
+		t.Logf("Balance verification passed - Unconfirmed: %v, LockedByTickets: %v, Total: %v",
+			balance.Unconfirmed, balance.LockedByTickets, balance.Total)
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
