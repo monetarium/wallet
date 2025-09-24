@@ -1647,10 +1647,22 @@ func (s *Store) AddTicketCommitment(ns walletdb.ReadWriteBucket, rec *TxRecord,
 		return err
 	}
 
-	log.Debugf("Accounting for ticket commitment %v:%d (%v) from the wallet",
-		rec.Hash, index, txOutAmt)
+	// In a ticket transaction:
+	// - Output 0: The submission output (the actual ticket price)
+	// - Output 1,3,5...: Commitment outputs (contain price + fee in script)
+	// The fee is the difference between the commitment amount and the submission output
+	submissionOutput := rec.MsgTx.TxOut[0]
+	ticketPrice := dcrutil.Amount(submissionOutput.Value)
 
-	v = valueTicketCommitment(txOutAmt, account)
+	// The commitment amount includes both price and fee
+	// We only want to store the actual ticket price as "locked"
+	// The fee portion (txOutAmt - ticketPrice) is paid to miners
+	actualTicketPrice := ticketPrice
+
+	log.Debugf("Accounting for ticket commitment %v:%d (commitment amt: %v, ticket price: %v) from the wallet",
+		rec.Hash, index, txOutAmt, actualTicketPrice)
+
+	v = valueTicketCommitment(actualTicketPrice, account)
 	err = putRawTicketCommitment(ns, k, v)
 	if err != nil {
 		return err
