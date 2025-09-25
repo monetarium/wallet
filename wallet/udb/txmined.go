@@ -3884,8 +3884,10 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 				}
 			case txscript.OP_SSTX:
 				coinBalance.VotingAuthority += utxoAmt
+				coinBalance.Total += utxoAmt
 				if coinType == cointype.CoinTypeVAR {
 					ab.VotingAuthority += utxoAmt
+					ab.Total += utxoAmt
 				}
 			case txscript.OP_SSGEN:
 				fallthrough
@@ -3990,7 +3992,8 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 		}
 
 		ab.LockedByTickets += it.amount
-		ab.Total += it.amount
+		// Do NOT add to Total - the ticket value is already represented
+		// by VotingAuthority from the submission output (OP_SSTX)
 	}
 	it.close()
 
@@ -4132,6 +4135,7 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 
 			case txscript.OP_SSTX:
 				balance.VotingAuthority += utxoAmt
+				balance.Total += utxoAmt
 
 			case txscript.OP_SSGEN:
 				fallthrough
@@ -4215,7 +4219,8 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 			// Only include if it's for the requested account
 			if it.account == account {
 				balance.LockedByTickets += it.amount
-				balance.Total += it.amount
+				// Do NOT add to Total - the ticket value is already represented
+				// by VotingAuthority from the submission output (OP_SSTX)
 			}
 		}
 		it.close()
