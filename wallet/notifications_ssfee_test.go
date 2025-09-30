@@ -216,9 +216,16 @@ func TestSSFeeNotificationEdgeCases(t *testing.T) {
 						PkScript: make([]byte, 25),
 					})
 				}
+				// Add proper SSFee OP_RETURN with SF marker
+				opReturnScript := []byte{
+					txscript.OP_RETURN, // 0x6a
+					0x06,               // OP_DATA_6
+					'S', 'F',          // "SF" marker
+					0x00, 0x00, 0x00, 0x00, // height
+				}
 				tx.AddTxOut(&wire.TxOut{
 					Value:    0,
-					PkScript: []byte{txscript.OP_RETURN},
+					PkScript: opReturnScript,
 					CoinType: cointype.CoinType(1), // Must match other outputs
 				})
 				return tx
@@ -322,10 +329,16 @@ func TestSSFeeOutputDiscovery(t *testing.T) {
 		})
 	}
 	
-	// Add OP_RETURN
+	// Add OP_RETURN with proper SF marker
+	opReturnScript := []byte{
+		txscript.OP_RETURN, // 0x6a
+		0x06,               // OP_DATA_6
+		'S', 'F',          // "SF" marker
+		0x00, 0x00, 0x00, 0x00, // height
+	}
 	tx.AddTxOut(&wire.TxOut{
 		Value:    0,
-		PkScript: []byte{txscript.OP_RETURN},
+		PkScript: opReturnScript,
 		CoinType: cointype.CoinType(1),
 	})
 	

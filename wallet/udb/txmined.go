@@ -3673,9 +3673,11 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 			case txscript.OP_SSTX:
 				// Update per-coin balance
 				coinBalance.VotingAuthority += utxoAmt
+				coinBalance.Total += utxoAmt
 				// Update legacy VAR balance for backward compatibility
 				if coinType == cointype.CoinTypeVAR {
 					ab.VotingAuthority += utxoAmt
+					ab.Total += utxoAmt
 				}
 			case txscript.OP_SSGEN:
 				fallthrough

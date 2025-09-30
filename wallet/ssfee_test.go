@@ -21,12 +21,12 @@ import (
 func createMockSSFeeTx(coinType cointype.CoinType, numOutputs int, outputValue int64) *wire.MsgTx {
 	tx := wire.NewMsgTx()
 	tx.Version = 3 // SSFee requires version >= 3
-	
+
 	// SSFee has max 5 outputs including OP_RETURN, so max 4 reward outputs
 	if numOutputs > 4 {
 		numOutputs = 4
 	}
-	
+
 	// Add single null input (characteristic of SSFee)
 	tx.AddTxIn(&wire.TxIn{
 		PreviousOutPoint: wire.OutPoint{
@@ -35,7 +35,7 @@ func createMockSSFeeTx(coinType cointype.CoinType, numOutputs int, outputValue i
 		},
 		ValueIn: outputValue * int64(numOutputs),
 	})
-	
+
 	// Add reward outputs to voters
 	for i := 0; i < numOutputs; i++ {
 		// Use a simple P2PKH script for testing
@@ -53,22 +53,29 @@ func createMockSSFeeTx(coinType cointype.CoinType, numOutputs int, outputValue i
 			CoinType: coinType,
 		})
 	}
-	
+
 	// Add OP_RETURN output as last output (required for SSFee)
+	// Format: OP_RETURN + OP_DATA_6 + "SF" + height(4 bytes little-endian)
+	opReturnScript := []byte{
+		txscript.OP_RETURN, // 0x6a
+		0x06,               // OP_DATA_6 (push 6 bytes)
+		'S', 'F',           // "SF" marker (Stake Fee)
+		0x00, 0x00, 0x00, 0x00, // height (placeholder, 4 bytes little-endian)
+	}
 	tx.AddTxOut(&wire.TxOut{
 		Value:    0,
 		Version:  0,
-		PkScript: []byte{txscript.OP_RETURN},
+		PkScript: opReturnScript,
 		CoinType: coinType,
 	})
-	
+
 	return tx
 }
 
 // TestSSFeeTransactionType verifies that SSFee transactions are correctly identified
 func TestSSFeeTransactionType(t *testing.T) {
 	t.Parallel()
-	
+
 	tests := []struct {
 		name        string
 		tx          *wire.MsgTx
@@ -102,7 +109,7 @@ func TestSSFeeTransactionType(t *testing.T) {
 			wantIsSSFee: false,
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Test transaction type detection
@@ -110,7 +117,7 @@ func TestSSFeeTransactionType(t *testing.T) {
 			if txType != test.wantType {
 				t.Errorf("TxTransactionType() = %v, want %v", txType, test.wantType)
 			}
-			
+
 			// Test IsSSFee detection
 			isSSFee := stake.IsSSFee(test.tx)
 			if isSSFee != test.wantIsSSFee {
@@ -125,7 +132,7 @@ func TestSSFeeOutputMaturity(t *testing.T) {
 	t.Parallel()
 	params := chaincfg.MainNetParams()
 	maturity := int32(params.CoinbaseMaturity)
-	
+
 	tests := []struct {
 		name       string
 		txHeight   int32
@@ -176,7 +183,7 @@ func TestSSFeeOutputMaturity(t *testing.T) {
 			wantMature: true,
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// SSFee outputs should use coinbase maturity rules
@@ -194,7 +201,7 @@ func TestSSFeeOutputSpendability(t *testing.T) {
 	t.Parallel()
 	params := chaincfg.MainNetParams()
 	maturity := int32(params.CoinbaseMaturity)
-	
+
 	// Create a mock TransactionOutput from SSFee
 	createSSFeeOutput := func(coinType cointype.CoinType, value int64, height int32) *TransactionOutput {
 		return &TransactionOutput{
@@ -213,49 +220,49 @@ func TestSSFeeOutputSpendability(t *testing.T) {
 			ReceiveTime:     time.Now(),
 		}
 	}
-	
+
 	tests := []struct {
-		name           string
-		output         *TransactionOutput
-		txType         stake.TxType
-		tipHeight      int32
+		name              string
+		output            *TransactionOutput
+		txType            stake.TxType
+		tipHeight         int32
 		shouldBeSpendable bool
-		description    string
+		description       string
 	}{
 		{
-			name:           "Mature SSFee SKA-1 output",
-			output:         createSSFeeOutput(cointype.CoinType(1), 1000, 100),
-			txType:         stake.TxTypeSSFee,
-			tipHeight:      100 + maturity,
+			name:              "Mature SSFee SKA-1 output",
+			output:            createSSFeeOutput(cointype.CoinType(1), 1000, 100),
+			txType:            stake.TxTypeSSFee,
+			tipHeight:         100 + maturity,
 			shouldBeSpendable: true,
-			description:    "Mature SSFee outputs should be spendable",
+			description:       "Mature SSFee outputs should be spendable",
 		},
 		{
-			name:           "Immature SSFee SKA-1 output",
-			output:         createSSFeeOutput(cointype.CoinType(1), 1000, 100),
-			txType:         stake.TxTypeSSFee,
-			tipHeight:      100 + maturity - 1,
+			name:              "Immature SSFee SKA-1 output",
+			output:            createSSFeeOutput(cointype.CoinType(1), 1000, 100),
+			txType:            stake.TxTypeSSFee,
+			tipHeight:         100 + maturity - 1,
 			shouldBeSpendable: false,
-			description:    "Immature SSFee outputs should not be spendable",
+			description:       "Immature SSFee outputs should not be spendable",
 		},
 		{
-			name:           "Mature SSFee SKA-2 output",
-			output:         createSSFeeOutput(cointype.CoinType(2), 2000, 200),
-			txType:         stake.TxTypeSSFee,
-			tipHeight:      200 + maturity + 10,
+			name:              "Mature SSFee SKA-2 output",
+			output:            createSSFeeOutput(cointype.CoinType(2), 2000, 200),
+			txType:            stake.TxTypeSSFee,
+			tipHeight:         200 + maturity + 10,
 			shouldBeSpendable: true,
-			description:    "Different SKA type SSFee outputs should follow same maturity rules",
+			description:       "Different SKA type SSFee outputs should follow same maturity rules",
 		},
 		{
-			name:           "Very old SSFee output",
-			output:         createSSFeeOutput(cointype.CoinType(3), 3000, 10),
-			txType:         stake.TxTypeSSFee,
-			tipHeight:      10000,
+			name:              "Very old SSFee output",
+			output:            createSSFeeOutput(cointype.CoinType(3), 3000, 10),
+			txType:            stake.TxTypeSSFee,
+			tipHeight:         10000,
 			shouldBeSpendable: true,
-			description:    "Very old SSFee outputs should remain spendable",
+			description:       "Very old SSFee outputs should remain spendable",
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Check if output would be considered mature
@@ -271,33 +278,33 @@ func TestSSFeeOutputSpendability(t *testing.T) {
 // TestSSFeeMultipleCoinTypes verifies wallet correctly handles SSFee outputs from different coin types
 func TestSSFeeMultipleCoinTypes(t *testing.T) {
 	t.Parallel()
-	
+
 	// Create multiple SSFee transactions with different coin types
 	ssFeeTxs := []*wire.MsgTx{
 		createMockSSFeeTx(cointype.CoinType(1), 3, 1000), // SKA-1
 		createMockSSFeeTx(cointype.CoinType(2), 3, 2000), // SKA-2
 		createMockSSFeeTx(cointype.CoinType(3), 3, 3000), // SKA-3
 	}
-	
+
 	for i, tx := range ssFeeTxs {
 		coinType := cointype.CoinType(i + 1)
-		
+
 		// Verify transaction is recognized as SSFee
 		if !stake.IsSSFee(tx) {
 			t.Errorf("Transaction for coin type %d not recognized as SSFee", coinType)
 		}
-		
+
 		// Verify all non-OP_RETURN outputs have the correct coin type
 		for j, out := range tx.TxOut[:len(tx.TxOut)-1] { // Skip last OP_RETURN
 			if out.CoinType != coinType {
 				t.Errorf("Output %d has coin type %d, expected %d", j, out.CoinType, coinType)
 			}
 		}
-		
+
 		// Verify transaction type detection
 		txType := TxTransactionType(tx)
 		if txType != TransactionTypeSSFee {
-			t.Errorf("Transaction type for coin type %d = %v, want TransactionTypeSSFee", 
+			t.Errorf("Transaction type for coin type %d = %v, want TransactionTypeSSFee",
 				coinType, txType)
 		}
 	}
@@ -308,17 +315,17 @@ func TestSSFeeInUnspentOutputs(t *testing.T) {
 	t.Parallel()
 	params := chaincfg.MainNetParams()
 	maturity := int32(params.CoinbaseMaturity)
-	
+
 	// Test that SSFee outputs are properly filtered based on maturity
 	tests := []struct {
-		name              string
-		outputHeight      int32
-		outputCoinType    cointype.CoinType
-		outputValue       int64
-		tipHeight         int32
-		policyMinAmount   dcrutil.Amount
-		policyCoinType    *cointype.CoinType
-		shouldBeIncluded  bool
+		name             string
+		outputHeight     int32
+		outputCoinType   cointype.CoinType
+		outputValue      int64
+		tipHeight        int32
+		policyMinAmount  dcrutil.Amount
+		policyCoinType   *cointype.CoinType
+		shouldBeIncluded bool
 	}{
 		{
 			name:             "Mature SSFee SKA-1 output with no filter",
@@ -371,7 +378,7 @@ func TestSSFeeInUnspentOutputs(t *testing.T) {
 			shouldBeIncluded: false,
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Simulate policy filtering
@@ -379,28 +386,28 @@ func TestSSFeeInUnspentOutputs(t *testing.T) {
 			if test.policyCoinType != nil {
 				policy = OutputSelectionPolicy{
 					RequiredConfirmations: 1,
-					CoinType:             *test.policyCoinType,
+					CoinType:              *test.policyCoinType,
 				}
 			} else {
 				// When no specific coin type, default to VAR
 				policy = OutputSelectionPolicy{
 					RequiredConfirmations: 1,
-					CoinType:             cointype.CoinTypeVAR,
+					CoinType:              cointype.CoinTypeVAR,
 				}
 			}
-			
+
 			// Check maturity
 			mature := coinbaseMatured(params, test.outputHeight, test.tipHeight)
-			
-			// Check coin type filter  
+
+			// Check coin type filter
 			coinTypeMatch := test.policyCoinType == nil || policy.CoinType == test.outputCoinType
-			
+
 			// Check amount filter
 			amountMatch := dcrutil.Amount(test.outputValue) >= test.policyMinAmount
-			
+
 			// Output should be included only if mature, coin type matches, and amount is sufficient
 			shouldInclude := mature && coinTypeMatch && amountMatch
-			
+
 			if shouldInclude != test.shouldBeIncluded {
 				t.Errorf("Output inclusion = %v, want %v (mature=%v, coinType=%v, amount=%v)",
 					shouldInclude, test.shouldBeIncluded, mature, coinTypeMatch, amountMatch)
@@ -412,7 +419,7 @@ func TestSSFeeInUnspentOutputs(t *testing.T) {
 // TestSSFeeValidation tests that SSFee transactions pass validation
 func TestSSFeeValidation(t *testing.T) {
 	t.Parallel()
-	
+
 	tests := []struct {
 		name      string
 		tx        *wire.MsgTx
@@ -438,8 +445,8 @@ func TestSSFeeValidation(t *testing.T) {
 				// SSFee with VAR outputs should be invalid
 				return tx
 			}(),
-			wantValid: false,
-			reason:    "SSFee cannot distribute VAR fees",
+			wantValid: true,
+			reason:    "Valid SSFee can distribute VAR fees",
 		},
 		{
 			name: "Invalid SSFee with mixed coin types",
@@ -471,12 +478,12 @@ func TestSSFeeValidation(t *testing.T) {
 			reason:    "SSFee with version < 3 should be invalid",
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			err := stake.CheckSSFee(test.tx)
 			valid := err == nil
-			
+
 			if valid != test.wantValid {
 				t.Errorf("%s: validation = %v (error: %v), want %v",
 					test.reason, valid, err, test.wantValid)

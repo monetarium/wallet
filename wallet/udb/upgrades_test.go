@@ -404,12 +404,12 @@ func verifyV12Upgrade(ctx context.Context, t *testing.T, db walletdb.DB) {
 			empty            bool
 		}{
 			// unmined ticket
-			{acct: 1, votingAuth: 1100},
-			{acct: 2, locked: 1000, total: 1000},
+			{acct: 1, votingAuth: 1100, total: 1100},
+			{acct: 2, locked: 1000}, // commitment only, no ticket output
 
 			// mined ticket
-			{acct: 3, votingAuth: 1100},
-			{acct: 4, locked: 1000, total: 1000},
+			{acct: 3, votingAuth: 1100, total: 1100},
+			{acct: 4, locked: 1000}, // commitment only, no ticket output
 
 			// mined ticket + unmined vote
 			{acct: 5, empty: true},
