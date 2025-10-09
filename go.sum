@@ -42,8 +42,6 @@ github.com/decred/dcrd/mixing v0.5.1-0.20250319155359-2b7d311f4a81 h1:QGpqlUfqB9
 github.com/decred/dcrd/mixing v0.5.1-0.20250319155359-2b7d311f4a81/go.mod h1:264YZ7KgKsjQGwart40E1QiVzPvLiaKkd/T0c8jtzNI=
 github.com/decred/dcrd/rpc/jsonrpc/types/v4 v4.3.0 h1:l0DnCcILTNrpy8APF3FLN312ChpkQaAuW30aC/RgBaw=
 github.com/decred/dcrd/rpc/jsonrpc/types/v4 v4.3.0/go.mod h1:j+kkRPXPJB5S9VFOsx8SQLcU7PTFkPKRc1aCHN4ENzA=
-github.com/decred/dcrd/txscript/v4 v4.1.1 h1:R4M2+jMujgQA91899SkL0cW66d6DC76Gx+1W1oEHjc0=
-github.com/decred/dcrd/txscript/v4 v4.1.1/go.mod h1:7ybmJoI+b6dxvQ+0aXdZpkyrj0PbnylJCzFxD1g8+/A=
 github.com/decred/go-socks v1.1.0 h1:dnENcc0KIqQo3HSXdgboXAHgqsCIutkqq6ntQjYtm2U=
 github.com/decred/go-socks v1.1.0/go.mod h1:sDhHqkZH0X4JjSa02oYOGhcGHYp12FsY1jQ/meV8md0=
 github.com/decred/slog v1.2.0 h1:soHAxV52B54Di3WtKLfPum9OFfWqwtf/ygf9njdfnPM=

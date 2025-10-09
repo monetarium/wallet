@@ -71,5 +71,6 @@ replace (
 	github.com/decred/dcrd/cointype => ../dcrd/cointype
 	github.com/decred/dcrd/dcrutil/v4 => ../dcrd/dcrutil
 	github.com/decred/dcrd/rpcclient/v8 => ../dcrd/rpcclient
+	github.com/decred/dcrd/txscript/v4 => ../dcrd/txscript
 	github.com/decred/dcrd/wire => ../dcrd/wire
 )

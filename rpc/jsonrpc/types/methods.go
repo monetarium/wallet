@@ -1076,6 +1076,28 @@ func NewSendFromTreasuryCmd(pubkey string, amounts map[string]float64) *SendFrom
 	}
 }
 
+// SendToBurnCmd defines the sendtoburn JSON-RPC command for permanently
+// burning SKA coins.
+type SendToBurnCmd struct {
+	Amount     float64 `json:"amount"`            // Amount of SKA coins to burn
+	CoinType   uint8   `json:"cointype"`          // SKA coin type (1-255)
+	Passphrase string  `json:"passphrase"`        // Wallet passphrase for authorization
+	Comment    *string `json:"comment,omitempty"` // Optional comment for user records
+}
+
+// NewSendToBurnCmd returns a new instance which can be used to issue a
+// sendtoburn JSON-RPC command.
+//
+// WARNING: This operation is IRREVERSIBLE. Burned coins are permanently destroyed.
+func NewSendToBurnCmd(amount float64, coinType uint8, passphrase string, comment *string) *SendToBurnCmd {
+	return &SendToBurnCmd{
+		Amount:     amount,
+		CoinType:   coinType,
+		Passphrase: passphrase,
+		Comment:    comment,
+	}
+}
+
 // DisapprovePercentCmd defines the parameters for the disapprovepercent
 // JSON-RPC command.
 type DisapprovePercentCmd struct{}
@@ -1470,6 +1492,7 @@ func init() {
 		{"sendtoaddress", (*SendToAddressCmd)(nil)},
 		{"sendtomultisig", (*SendToMultiSigCmd)(nil)},
 		{"sendtotreasury", (*SendToTreasuryCmd)(nil)},
+		{"sendtoburn", (*SendToBurnCmd)(nil)},
 		{"setaccountpassphrase", (*SetAccountPassphraseCmd)(nil)},
 		{"setdisapprovepercent", (*SetDisapprovePercentCmd)(nil)},
 		{"settreasurypolicy", (*SetTreasuryPolicyCmd)(nil)},

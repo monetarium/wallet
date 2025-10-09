@@ -187,6 +187,7 @@ var handlers = map[string]handler{
 	"sendtoaddress":             {fn: (*Server).sendToAddress},
 	"sendtomultisig":            {fn: (*Server).sendToMultiSig},
 	"sendtotreasury":            {fn: (*Server).sendToTreasury},
+	"sendtoburn":                {fn: (*Server).sendToBurn},
 	"setaccountpassphrase":      {fn: (*Server).setAccountPassphrase},
 	"setdisapprovepercent":      {fn: (*Server).setDisapprovePercent},
 	"settreasurypolicy":         {fn: (*Server).setTreasuryPolicy},
@@ -5055,6 +5056,100 @@ func (s *Server) sendFromTreasury(ctx context.Context, icmd any) (any, error) {
 	}
 
 	return s.sendOutputsFromTreasury(ctx, w, *cmd)
+}
+
+// sendToBurn handles a sendtoburn RPC request by creating a new transaction
+// that permanently burns (destroys) SKA coins by sending them to a provably
+// unspendable OP_RETURN output. This operation is IRREVERSIBLE.
+// Only SKA coin types (1-255) can be burned; VAR coins cannot be burned.
+// Upon success, the TxID for the created burn transaction is returned.
+func (s *Server) sendToBurn(ctx context.Context, icmd any) (any, error) {
+	cmd := icmd.(*types.SendToBurnCmd)
+	w, ok := s.walletLoader.LoadedWallet()
+	if !ok {
+		return nil, errUnloadedWallet
+	}
+
+	// Validate coin type - must be SKA (1-255), not VAR (0)
+	coinType := cointype.CoinType(cmd.CoinType)
+	if err := validateCoinType(coinType); err != nil {
+		return nil, err
+	}
+	if !coinType.IsSKA() {
+		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter,
+			"cannot burn VAR coins (coin type 0); only SKA coins (1-255) can be burned")
+	}
+
+	// Parse and validate amount
+	amt, err := dcrutil.NewAmount(cmd.Amount)
+	if err != nil {
+		return nil, rpcError(dcrjson.ErrRPCInvalidParameter, err)
+	}
+	if amt <= 0 {
+		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "amount must be positive")
+	}
+
+	// Temporarily unlock wallet with provided passphrase
+	passphrase := []byte(cmd.Passphrase)
+	defer func() {
+		for i := range passphrase {
+			passphrase[i] = 0
+		}
+	}()
+
+	err = w.Unlock(ctx, passphrase, nil)
+	if err != nil {
+		return nil, rpcError(dcrjson.ErrRPCWalletUnlockNeeded, err)
+	}
+
+	// Create the burn script for this coin type
+	params := w.ChainParams()
+	burnScript, err := params.CreateSKABurnScript(coinType)
+	if err != nil {
+		return nil, rpcError(dcrjson.ErrRPCInvalidParameter, err)
+	}
+
+	// Create the burn output with coin type and burn script
+	outputs := []*wire.TxOut{
+		{
+			Value:    int64(amt),
+			CoinType: coinType,
+			Version:  wire.DefaultPkScriptVersion,
+			PkScript: burnScript,
+		},
+	}
+
+	// Send the transaction - burning always spends from default account
+	account := uint32(udb.DefaultAccountNum)
+	changeAccount := account
+	minConf := int32(1)
+
+	// Handle mixing account change routing if enabled
+	if s.cfg.MixingEnabled {
+		mixAccount, err := w.AccountNumber(ctx, s.cfg.MixAccount)
+		if err != nil {
+			return nil, err
+		}
+		if account == mixAccount {
+			changeAccount, err = w.AccountNumber(ctx, s.cfg.MixChangeAccount)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	txHash, err := w.SendOutputs(ctx, outputs, account, changeAccount, minConf)
+	if err != nil {
+		if errors.Is(err, errors.Locked) {
+			return nil, errWalletUnlockNeeded
+		}
+		if errors.Is(err, errors.InsufficientBalance) {
+			return nil, rpcError(dcrjson.ErrRPCWalletInsufficientFunds, err)
+		}
+		return nil, err
+	}
+
+	return txHash.String(), nil
 }
 
 // setTxFee sets the transaction fee per kilobyte added to transactions.

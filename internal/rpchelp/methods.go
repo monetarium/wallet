@@ -109,6 +109,7 @@ var Methods = []struct {
 	{"sendtoaddress", returnsString},
 	{"sendtomultisig", returnsString},
 	{"sendtotreasury", returnsString},
+	{"sendtoburn", returnsString},
 	{"setaccountpassphrase", nil},
 	{"setdisapprovepercent", nil},
 	{"settreasurypolicy", nil},

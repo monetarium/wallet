@@ -863,6 +863,17 @@ var helpDescsEnUS = map[string]string{
 	"sendtotreasury-amount":    "Amount to send to treasury",
 	"sendtotreasury--result0":  "The transaction hash of the sent transaction",
 
+	// SendToBurnCmd help.
+	"sendtoburn--synopsis": "⚠️  WARNING: IRREVERSIBLE OPERATION ⚠️\n" +
+		"Permanently burns (destroys) SKA coins making them unspendable forever.\n" +
+		"This action cannot be undone. Burned coins are permanently removed from circulation.\n" +
+		"Only SKA coin types (1-255) can be burned.",
+	"sendtoburn-amount":     "Amount of SKA coins to burn (in coin units, e.g., 100.5)",
+	"sendtoburn-cointype":   "SKA coin type to burn (must be 1-255, VAR cannot be burned)",
+	"sendtoburn-comment":    "Optional comment for user records (not stored on blockchain)",
+	"sendtoburn-passphrase": "Wallet passphrase required for authorization",
+	"sendtoburn--result0":   "The transaction hash of the burn transaction",
+
 	// SetAccountPassphraseCmd help.
 	"setaccountpassphrase--synopsis": "Individually encrypt or change per-account passphrase",
 	"setaccountpassphrase-account":   "Account to modify",
