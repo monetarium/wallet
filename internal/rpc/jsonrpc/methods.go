@@ -6602,12 +6602,13 @@ func createUnsignedSKAEmissionTransaction(auth *chaincfg.SKAEmissionAuth,
 	// Note: Signature verification is not done here since we're creating an unsigned transaction.
 	// The signature will be added after the transaction is created.
 
-	// Create the authorized emission transaction
+	// Create the authorized emission transaction with Expiry set to window end
+	// This ensures automatic mempool cleanup if the emission window expires
 	tx := &wire.MsgTx{
 		SerType:  wire.TxSerializeFull,
 		Version:  1,
 		LockTime: 0,
-		Expiry:   0,
+		Expiry:   uint32(emissionEnd),
 	}
 
 	// Create signature script with authorization data
