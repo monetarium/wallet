@@ -30,7 +30,7 @@ type HardcodedDeployment struct {
 // DCP0001 specifies hard forking changes to the stake difficulty algorithm as
 // defined by https://github.com/decred/dcps/blob/master/dcp-0001/dcp-0001.mediawiki.
 var DCP0001 = HardcodedDeployment{
-	MainNetActivationHeight:  255,
+	MainNetActivationHeight:  0, // Forced active from genesis in mainnet params
 	TestNet2ActivationHeight: 46128,
 	TestNet3ActivationHeight: 0,
 	SimNetActivationHeight:   0,
@@ -39,7 +39,7 @@ var DCP0001 = HardcodedDeployment{
 // DCP0002 specifies the activation of the OP_SHA256 hard fork as defined by
 // https://github.com/decred/dcps/blob/master/dcp-0002/dcp-0002.mediawiki.
 var DCP0002 = HardcodedDeployment{
-	MainNetActivationHeight:  255,
+	MainNetActivationHeight:  0, // Forced active from genesis in mainnet params
 	TestNet2ActivationHeight: 151968,
 	TestNet3ActivationHeight: 0,
 	SimNetActivationHeight:   0,
@@ -48,8 +48,53 @@ var DCP0002 = HardcodedDeployment{
 // DCP0003 specifies the activation of a CSV soft fork as defined by
 // https://github.com/decred/dcps/blob/master/dcp-0003/dcp-0003.mediawiki.
 var DCP0003 = HardcodedDeployment{
-	MainNetActivationHeight:  255,
+	MainNetActivationHeight:  0, // Forced active from genesis in mainnet params
 	TestNet2ActivationHeight: 151968,
+	TestNet3ActivationHeight: 0,
+	SimNetActivationHeight:   0,
+}
+
+// DCP0004 specifies changes to sequence lock handling as defined by
+// https://github.com/decred/dcps/blob/master/dcp-0004/dcp-0004.mediawiki.
+var DCP0004 = HardcodedDeployment{
+	MainNetActivationHeight:  0,  // Forced active from genesis in mainnet params
+	TestNet2ActivationHeight: -1, // Not active on old testnet2
+	TestNet3ActivationHeight: 0,
+	SimNetActivationHeight:   0,
+}
+
+// DCP0005 specifies the activation of header commitments as defined by
+// https://github.com/decred/dcps/blob/master/dcp-0005/dcp-0005.mediawiki.
+var DCP0005 = HardcodedDeployment{
+	MainNetActivationHeight:  0,  // Forced active from genesis in mainnet params
+	TestNet2ActivationHeight: -1, // Not active on old testnet2
+	TestNet3ActivationHeight: 0,
+	SimNetActivationHeight:   0,
+}
+
+// DCP0008 specifies explicit version upgrades as defined by
+// https://github.com/decred/dcps/blob/master/dcp-0008/dcp-0008.mediawiki.
+var DCP0008 = HardcodedDeployment{
+	MainNetActivationHeight:  0,  // Forced active from genesis in mainnet params
+	TestNet2ActivationHeight: -1, // Not active on old testnet2
+	TestNet3ActivationHeight: 0,
+	SimNetActivationHeight:   0,
+}
+
+// DCP0009 specifies automatic ticket revocations as defined by
+// https://github.com/decred/dcps/blob/master/dcp-0009/dcp-0009.mediawiki.
+var DCP0009 = HardcodedDeployment{
+	MainNetActivationHeight:  0,  // Forced active from genesis in mainnet params
+	TestNet2ActivationHeight: -1, // Not active on old testnet2
+	TestNet3ActivationHeight: 0,
+	SimNetActivationHeight:   0,
+}
+
+// DCP0011 specifies the BLAKE3 proof of work algorithm change as defined by
+// https://github.com/decred/dcps/blob/master/dcp-0011/dcp-0011.mediawiki.
+var DCP0011 = HardcodedDeployment{
+	MainNetActivationHeight:  0,  // Forced active from genesis in mainnet params
+	TestNet2ActivationHeight: -1, // Not active on old testnet2
 	TestNet3ActivationHeight: 0,
 	SimNetActivationHeight:   0,
 }
