@@ -30,6 +30,16 @@ type FilterProof = struct {
 	Proof      []chainhash.Hash
 }
 
+// FeeEstimates contains dynamic fee estimation data from the network backend.
+type FeeEstimates struct {
+	CoinType             uint8
+	MinRelayFee          float64
+	DynamicFeeMultiplier float64
+	NormalFee            float64
+	FastFee              float64
+	SlowFee              float64
+}
+
 // NetworkBackend provides wallets with Decred network functionality.  Some
 // wallet operations require the wallet to be associated with a network backend
 // to complete.
@@ -56,6 +66,10 @@ type NetworkBackend interface {
 	// These semantics match that of context.Context.
 	Done() <-chan struct{}
 	Err() error
+
+	// GetFeeEstimatesByCoinType queries dynamic fee estimates for the specified coin type.
+	// This method allows the wallet to query current fee estimates from dcrd.
+	GetFeeEstimatesByCoinType(ctx context.Context, coinType uint8) (*FeeEstimates, error)
 }
 
 // NetworkBackend returns the currently associated network backend of the
@@ -182,6 +196,10 @@ func (o OfflineNetworkBackend) Done() <-chan struct{} {
 
 func (o OfflineNetworkBackend) Err() error {
 	return errors.E("offline")
+}
+
+func (o OfflineNetworkBackend) GetFeeEstimatesByCoinType(ctx context.Context, coinType uint8) (*FeeEstimates, error) {
+	return nil, errors.E("offline")
 }
 
 // Compile time check to ensure OfflineNetworkBackend fulfills the

@@ -3093,6 +3093,7 @@ func (s *Server) getVoteChoices(ctx context.Context, icmd any) (any, error) {
 }
 
 // getWalletFee returns the currently set tx fee for the requested wallet
+// with source indication (manual, rpc, or static).
 func (s *Server) getWalletFee(ctx context.Context, icmd any) (any, error) {
 	cmd := icmd.(*types.GetWalletFeeCmd)
 	w, ok := s.walletLoader.LoadedWallet()
@@ -3101,19 +3102,21 @@ func (s *Server) getWalletFee(ctx context.Context, icmd any) (any, error) {
 	}
 
 	// Default to VAR (coin type 0) if not specified
-	coinType := 0
+	coinType := cointype.CoinType(0)
 	if cmd.CoinType != nil {
-		coinType = *cmd.CoinType
+		coinType = cointype.CoinType(*cmd.CoinType)
 	}
 
-	// Return appropriate fee based on coin type
-	switch cointype.CoinType(coinType) {
-	case cointype.CoinTypeVAR:
-		return w.RelayFee().ToCoin(), nil
-	default:
-		// SKA or other coin types
-		return w.SKARelayFee().ToCoin(), nil
+	// Get effective fee with source indication
+	fee, source, err := w.GetEffectiveFee(ctx, coinType)
+	if err != nil {
+		return nil, rpcError(dcrjson.ErrRPCInternal.Code, err)
 	}
+
+	return &types.GetWalletFeeResult{
+		Fee:    fee.ToCoin(),
+		Source: source,
+	}, nil
 }
 
 // These generators create the following global variables in this package:
@@ -5171,19 +5174,20 @@ func (s *Server) setTxFee(ctx context.Context, icmd any) (any, error) {
 	}
 
 	// Default to VAR (coin type 0) if not specified
-	coinType := 0
+	coinType := cointype.CoinType(0)
 	if cmd.CoinType != nil {
-		coinType = *cmd.CoinType
+		coinType = cointype.CoinType(*cmd.CoinType)
 	}
 
-	// Set appropriate fee based on coin type
-	switch cointype.CoinType(coinType) {
-	case cointype.CoinTypeVAR:
-		w.SetRelayFee(relayFee)
-	default:
-		// SKA or other coin types
-		w.SetSKARelayFee(relayFee)
+	// If amount is 0, clear manual override to use RPC dynamic fees
+	if cmd.Amount == 0 {
+		w.ClearManualFee(coinType)
+		// A boolean true result is returned upon success.
+		return true, nil
 	}
+
+	// Set manual fee override for the specified coin type
+	w.SetManualFee(coinType, relayFee)
 
 	// A boolean true result is returned upon success.
 	return true, nil

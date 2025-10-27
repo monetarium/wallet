@@ -140,7 +140,7 @@ func (w *Wallet) NewUnsignedTransaction(ctx context.Context, outputs []*wire.TxO
 		}
 
 		// Calculate relay fee based on transaction coin type
-		actualRelayFee := w.RelayFeeForCoinType(txCoinType)
+		actualRelayFee := w.RelayFeeForCoinType(ctx, txCoinType)
 
 		var err error
 		authoredTx, err = txauthor.NewUnsignedTransaction(outputs, actualRelayFee,
@@ -486,7 +486,7 @@ func (w *Wallet) authorTx(ctx context.Context, op errors.Op, a *authorTx) error 
 		// Calculate relay fee based on transaction coin type
 		actualTxFee := a.txFee
 		if len(a.outputs) > 0 {
-			actualTxFee = w.RelayFeeForCoinType(a.outputs[0].CoinType)
+			actualTxFee = w.RelayFeeForCoinType(ctx, a.outputs[0].CoinType)
 		}
 
 		var err error
@@ -746,7 +746,7 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 		changeSize = txsizes.P2PKHPkScriptSize
 	}
 	feeSize := txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, changeSize)
-	feeEst := txrules.FeeForSerializeSize(w.RelayFeeForCoinType(coinType), feeSize)
+	feeEst := txrules.FeeForSerializeSize(w.RelayFeeForCoinType(ctx, coinType), feeSize)
 
 	if totalInput < amount+feeEst {
 		return txToMultisigError(errors.E(op, errors.InsufficientBalance))
@@ -936,7 +936,7 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 
 	// Get an initial fee estimate based on the number of selected inputs
 	// and added outputs, with no change.
-	feeRate := w.RelayFeeForCoinType(coinType)
+	feeRate := w.RelayFeeForCoinType(ctx, coinType)
 	szEst := txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, 0)
 	feeEst := txrules.FeeForSerializeSize(feeRate, szEst)
 
@@ -1066,7 +1066,7 @@ func (w *Wallet) mixedSplit(ctx context.Context, req *PurchaseTicketsRequest, ne
 	for i := 0; i < req.Count; i++ {
 		mixOut[i] = &wire.TxOut{Value: int64(neededPerTicket), Version: 0, PkScript: p2pkhSizedScript, CoinType: ticketCoinType}
 	}
-	relayFee := w.RelayFeeForCoinType(ticketCoinType)
+	relayFee := w.RelayFeeForCoinType(ctx, ticketCoinType)
 	var changeSourceUpdates []func(walletdb.ReadWriteTx) error
 	defer func() {
 		if err != nil {
@@ -1198,7 +1198,7 @@ func (w *Wallet) individualSplit(ctx context.Context, req *PurchaseTicketsReques
 		changeAccount:      req.ChangeAccount,
 		minconf:            req.MinConf,
 		randomizeChangeIdx: false,
-		txFee:              w.RelayFeeForCoinType(ticketCoinType),
+		txFee:              w.RelayFeeForCoinType(ctx, ticketCoinType),
 		dontSignTx:         req.DontSignTx,
 		isTreasury:         false,
 	}

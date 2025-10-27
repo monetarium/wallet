@@ -642,3 +642,9 @@ func (s *Syncer) Err() error {
 		return nil
 	}
 }
+
+func (s *Syncer) GetFeeEstimatesByCoinType(ctx context.Context, coinType uint8) (*wallet.FeeEstimates, error) {
+	// SPV mode doesn't have direct access to dcrd RPC for fee estimates
+	// Return error indicating this functionality requires full node connection
+	return nil, errors.E(errors.Invalid, "fee estimates not available in SPV mode")
+}

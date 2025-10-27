@@ -518,6 +518,27 @@ func (r *RPC) GetConfirmationHeight(ctx context.Context, txHash *chainhash.Hash)
 	return grt.BlockHeight, nil
 }
 
+// FeeEstimates contains dynamic fee estimation data from dcrd
+type FeeEstimates struct {
+	CoinType             uint8   `json:"cointype"`
+	MinRelayFee          float64 `json:"minrelayfee"`
+	DynamicFeeMultiplier float64 `json:"dynamicfeemultiplier"`
+	NormalFee            float64 `json:"normalfee"`
+	FastFee              float64 `json:"fastfee"`
+	SlowFee              float64 `json:"slowfee"`
+}
+
+// GetFeeEstimatesByCoinType queries dynamic fee estimates for the specified coin type
+func (r *RPC) GetFeeEstimatesByCoinType(ctx context.Context, coinType uint8) (*FeeEstimates, error) {
+	const op errors.Op = "dcrd.GetFeeEstimatesByCoinType"
+	var result FeeEstimates
+	err := r.Call(ctx, "getfeestimatesbycointype", &result, coinType)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+	return &result, nil
+}
+
 // String returns a string representation of the caller (if it exists).
 func (r *RPC) String() string {
 	if s, ok := r.Caller.(fmt.Stringer); ok {

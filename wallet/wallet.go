@@ -141,6 +141,12 @@ type Wallet struct {
 	relayFeeMu                 sync.Mutex
 	skaRelayFee                dcrutil.Amount
 	skaRelayFeeMu              sync.Mutex
+
+	// Per-cointype fee management (manual overrides + static fallbacks)
+	manualFees   map[cointype.CoinType]*dcrutil.Amount  // nil = use RPC
+	staticFees   map[cointype.CoinType]dcrutil.Amount   // config fallback
+	feesMu       sync.RWMutex
+
 	allowHighFees              bool
 	disableCoinTypeUpgrades    bool
 	recentlyPublished          map[chainhash.Hash]struct{}
@@ -767,24 +773,53 @@ func (w *Wallet) VSPMaxFee() dcrutil.Amount {
 
 // RelayFee returns the current minimum relay fee (per kB of serialized
 // transaction) used when constructing transactions.
+// This method uses the 3-tier priority system (manual > RPC > static).
 func (w *Wallet) RelayFee() dcrutil.Amount {
-	w.relayFeeMu.Lock()
-	relayFee := w.relayFee
-	w.relayFeeMu.Unlock()
-	return relayFee
+	fee, _, err := w.GetEffectiveFee(context.Background(), cointype.CoinTypeVAR)
+	if err != nil {
+		log.Warnf("Failed to get effective fee for VAR: %v, using static fallback", err)
+		w.relayFeeMu.Lock()
+		relayFee := w.relayFee
+		w.relayFeeMu.Unlock()
+		return relayFee
+	}
+	return fee
 }
 
 // SetRelayFee sets a new minimum relay fee (per kB of serialized
 // transaction) used when constructing transactions.
+// This updates both the old relayFee field and the new static fees map.
 func (w *Wallet) SetRelayFee(relayFee dcrutil.Amount) {
 	w.relayFeeMu.Lock()
 	w.relayFee = relayFee
 	w.relayFeeMu.Unlock()
+
+	// Also update static fee map for the new fee system
+	w.feesMu.Lock()
+	w.staticFees[cointype.CoinTypeVAR] = relayFee
+	w.feesMu.Unlock()
 }
 
 // SKARelayFee returns the current minimum relay fee (per kB of serialized
 // transaction) used when constructing SKA transactions.
+// This method uses the 3-tier priority system (manual > RPC > static).
+// Returns fee for the first active SKA coin type.
 func (w *Wallet) SKARelayFee() dcrutil.Amount {
+	// Get first active SKA coin type from chain params
+	for ct, config := range w.chainParams.SKACoins {
+		if config != nil && config.Active {
+			fee, _, err := w.GetEffectiveFee(context.Background(), ct)
+			if err != nil {
+				log.Warnf("Failed to get effective fee for SKA coin type %d: %v, using static fallback", ct, err)
+				w.skaRelayFeeMu.Lock()
+				skaRelayFee := w.skaRelayFee
+				w.skaRelayFeeMu.Unlock()
+				return skaRelayFee
+			}
+			return fee
+		}
+	}
+	// Fallback if no active SKA coins
 	w.skaRelayFeeMu.Lock()
 	skaRelayFee := w.skaRelayFee
 	w.skaRelayFeeMu.Unlock()
@@ -793,18 +828,109 @@ func (w *Wallet) SKARelayFee() dcrutil.Amount {
 
 // SetSKARelayFee sets a new minimum relay fee (per kB of serialized
 // transaction) used when constructing SKA transactions.
+// This updates both the old skaRelayFee field and the static fees map for all active SKA coins.
 func (w *Wallet) SetSKARelayFee(skaRelayFee dcrutil.Amount) {
 	w.skaRelayFeeMu.Lock()
 	w.skaRelayFee = skaRelayFee
 	w.skaRelayFeeMu.Unlock()
+
+	// Also update static fee map for all active SKA coins
+	w.feesMu.Lock()
+	if w.chainParams != nil && w.chainParams.SKACoins != nil {
+		for ct, config := range w.chainParams.SKACoins {
+			if config != nil && config.Active {
+				w.staticFees[ct] = skaRelayFee
+			}
+		}
+	} else {
+		// Fallback: update only existing SKA coin types in the map
+		for ct := range w.staticFees {
+			if ct != cointype.CoinTypeVAR {
+				w.staticFees[ct] = skaRelayFee
+			}
+		}
+	}
+	w.feesMu.Unlock()
 }
 
-// RelayFeeForCoinType returns the appropriate relay fee for the specified coin type.
-func (w *Wallet) RelayFeeForCoinType(coinType cointype.CoinType) dcrutil.Amount {
-	if coinType == cointype.CoinTypeVAR {
-		return w.RelayFee()
+// SetManualFee sets a manual fee override for the specified coin type.
+// This fee takes priority over RPC-queried dynamic fees.
+func (w *Wallet) SetManualFee(ct cointype.CoinType, fee dcrutil.Amount) {
+	w.feesMu.Lock()
+	w.manualFees[ct] = &fee
+	w.feesMu.Unlock()
+
+	// Also update old fields for backward compatibility
+	if ct == cointype.CoinTypeVAR {
+		w.SetRelayFee(fee)
+	} else {
+		w.SetSKARelayFee(fee)
 	}
-	return w.SKARelayFee()
+}
+
+// ClearManualFee removes manual fee override for the specified coin type,
+// reverting to RPC-based dynamic fee estimation.
+func (w *Wallet) ClearManualFee(ct cointype.CoinType) {
+	w.feesMu.Lock()
+	delete(w.manualFees, ct)
+	w.feesMu.Unlock()
+}
+
+// queryDynamicFee queries dcrd RPC for current dynamic fee estimate
+func (w *Wallet) queryDynamicFee(ctx context.Context, ct cointype.CoinType) (dcrutil.Amount, error) {
+	n, err := w.NetworkBackend()
+	if err != nil {
+		return 0, err
+	}
+
+	estimates, err := n.GetFeeEstimatesByCoinType(ctx, uint8(ct))
+	if err != nil {
+		return 0, err
+	}
+
+	// Use normal fee (already includes dynamic multiplier)
+	return dcrutil.NewAmount(estimates.NormalFee)
+}
+
+// GetEffectiveFee returns the fee that will actually be used for transactions.
+// Priority: manual override > RPC dynamic fee > static config fee
+// Returns the fee amount, source ("manual", "rpc", or "static"), and any error.
+func (w *Wallet) GetEffectiveFee(ctx context.Context, ct cointype.CoinType) (dcrutil.Amount, string, error) {
+	w.feesMu.RLock()
+	manual := w.manualFees[ct]
+	static, hasStatic := w.staticFees[ct]
+	w.feesMu.RUnlock()
+
+	// Priority 1: Manual override
+	if manual != nil {
+		return *manual, "manual", nil
+	}
+
+	// Priority 2: RPC dynamic fee
+	if fee, err := w.queryDynamicFee(ctx, ct); err == nil {
+		return fee, "rpc", nil
+	}
+
+	// Priority 3: Static fallback
+	if hasStatic {
+		return static, "static", nil
+	}
+
+	return 0, "static", errors.Errorf("no fee configured for coin type %d", ct)
+}
+
+// RelayFeeForCoinType returns the effective relay fee for the specified coin type.
+// This method now queries dynamic fees from dcrd by default, unless manually overridden.
+func (w *Wallet) RelayFeeForCoinType(ctx context.Context, ct cointype.CoinType) dcrutil.Amount {
+	fee, _, err := w.GetEffectiveFee(ctx, ct)
+	if err != nil {
+		log.Warnf("Failed to get effective fee for coin type %d: %v", ct, err)
+		w.feesMu.RLock()
+		static := w.staticFees[ct]
+		w.feesMu.RUnlock()
+		return static
+	}
+	return fee
 }
 
 // InitialHeight is the wallet's tip height prior to syncing with the network.
@@ -4823,7 +4949,7 @@ func (w *Wallet) SendOutputs(ctx context.Context, outputs []*wire.TxOut, account
 	coinType := txrules.GetCoinTypeFromOutputs(outputs)
 
 	// Calculate appropriate fee rate based on coin type using user-configured fees
-	txFeeRate := w.RelayFeeForCoinType(coinType)
+	txFeeRate := w.RelayFeeForCoinType(ctx, coinType)
 
 	// Validate outputs with appropriate fee rate
 	for _, output := range outputs {
@@ -5778,6 +5904,24 @@ func Open(ctx context.Context, cfg *Config) (*Wallet, error) {
 		w.skaRelayFee = dcrutil.Amount(w.chainParams.SKAMinRelayTxFee)
 	} else {
 		w.skaRelayFee = cfg.RelayFee // Fallback to VAR fee if no SKA fee configured
+	}
+
+	// Initialize per-cointype fee maps
+	w.manualFees = make(map[cointype.CoinType]*dcrutil.Amount)
+	w.staticFees = make(map[cointype.CoinType]dcrutil.Amount)
+
+	// Set static fallback fee for VAR (coin type 0)
+	w.staticFees[cointype.CoinTypeVAR] = cfg.RelayFee
+
+	// Set static fallback fees for each active SKA coin from chain params
+	for ct, config := range w.chainParams.SKACoins {
+		if config != nil && config.Active {
+			if w.chainParams.SKAMinRelayTxFee > 0 {
+				w.staticFees[ct] = dcrutil.Amount(w.chainParams.SKAMinRelayTxFee)
+			} else {
+				w.staticFees[ct] = cfg.RelayFee // fallback to VAR fee
+			}
+		}
 	}
 
 	// Record current tip as initialHeight.

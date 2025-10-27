@@ -7,6 +7,7 @@ package chain
 import (
 	"context"
 
+	"decred.org/dcrwallet/v5/wallet"
 	"github.com/decred/dcrd/chaincfg/chainhash"
 	"github.com/decred/dcrd/dcrutil/v4"
 	"github.com/decred/dcrd/gcs/v4"
@@ -107,4 +108,20 @@ func (s *Syncer) Err() error {
 	default:
 		return nil
 	}
+}
+
+func (s *Syncer) GetFeeEstimatesByCoinType(ctx context.Context, coinType uint8) (*wallet.FeeEstimates, error) {
+	estimates, err := s.rpc.GetFeeEstimatesByCoinType(ctx, coinType)
+	if err != nil {
+		return nil, err
+	}
+	// Convert dcrd.FeeEstimates to wallet.FeeEstimates
+	return &wallet.FeeEstimates{
+		CoinType:             estimates.CoinType,
+		MinRelayFee:          estimates.MinRelayFee,
+		DynamicFeeMultiplier: estimates.DynamicFeeMultiplier,
+		NormalFee:            estimates.NormalFee,
+		FastFee:              estimates.FastFee,
+		SlowFee:              estimates.SlowFee,
+	}, nil
 }

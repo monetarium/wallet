@@ -37,3 +37,13 @@ func (mockNetwork) StakeDifficulty(ctx context.Context) (dcrutil.Amount, error) 
 func (mockNetwork) Synced(ctx context.Context) (bool, int32)                    { return false, 0 }
 func (mockNetwork) Done() <-chan struct{}                                       { return nil }
 func (mockNetwork) Err() error                                                  { return nil }
+func (mockNetwork) GetFeeEstimatesByCoinType(ctx context.Context, coinType uint8) (*FeeEstimates, error) {
+	return &FeeEstimates{
+		CoinType:             coinType,
+		MinRelayFee:          0.0001,
+		DynamicFeeMultiplier: 1.0,
+		NormalFee:            0.0001,
+		FastFee:              0.0002,
+		SlowFee:              0.00005,
+	}, nil
+}

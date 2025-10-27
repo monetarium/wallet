@@ -94,6 +94,12 @@ type ImportEmissionKeyResult struct {
 	PublicKey string `json:"publickey"` // Hex-encoded public key for verification
 }
 
+// GetWalletFeeResult models the data returned from the getwalletfee command.
+type GetWalletFeeResult struct {
+	Fee    float64 `json:"fee"`    // Fee amount in coins per KB
+	Source string  `json:"source"` // Source of the fee: "manual", "rpc", or "static"
+}
+
 // GetPeerInfoResult models the data returned from the getpeerinfo command.
 type GetPeerInfoResult struct {
 	ID             int32  `json:"id"`

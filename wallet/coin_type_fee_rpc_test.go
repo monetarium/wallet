@@ -5,6 +5,7 @@
 package wallet
 
 import (
+	"context"
 	"testing"
 
 	"github.com/decred/dcrd/chaincfg/v3"
@@ -34,6 +35,15 @@ func TestCoinTypeFeeManagementMethods(t *testing.T) {
 		w.skaRelayFee = dcrutil.Amount(w.chainParams.SKAMinRelayTxFee)
 	} else {
 		w.skaRelayFee = varRelayFee
+	}
+
+	// Initialize per-cointype fee maps (new dynamic fee support)
+	w.manualFees = make(map[cointype.CoinType]*dcrutil.Amount)
+	w.staticFees = make(map[cointype.CoinType]dcrutil.Amount)
+	w.staticFees[cointype.CoinTypeVAR] = varRelayFee
+	if w.chainParams.SKAMinRelayTxFee > 0 {
+		w.staticFees[cointype.CoinType(1)] = dcrutil.Amount(w.chainParams.SKAMinRelayTxFee)
+		w.staticFees[cointype.CoinType(2)] = dcrutil.Amount(w.chainParams.SKAMinRelayTxFee)
 	}
 
 	t.Run("Test RelayFee and SetRelayFee for VAR", func(t *testing.T) {
@@ -80,19 +90,19 @@ func TestCoinTypeFeeManagementMethods(t *testing.T) {
 		w.SetSKARelayFee(skaFee)
 
 		// Test VAR coin type
-		varResult := w.RelayFeeForCoinType(cointype.CoinTypeVAR)
+		varResult := w.RelayFeeForCoinType(context.Background(), cointype.CoinTypeVAR)
 		if varResult != varFee {
 			t.Errorf("RelayFeeForCoinType(VAR) = %d, expected %d", varResult, varFee)
 		}
 
 		// Test SKA coin type (SKA-1)
-		skaResult := w.RelayFeeForCoinType(cointype.CoinType(1))
+		skaResult := w.RelayFeeForCoinType(context.Background(), cointype.CoinType(1))
 		if skaResult != skaFee {
 			t.Errorf("RelayFeeForCoinType(SKA-1) = %d, expected %d", skaResult, skaFee)
 		}
 
 		// Test another SKA coin type (SKA-2)
-		ska2Result := w.RelayFeeForCoinType(cointype.CoinType(2))
+		ska2Result := w.RelayFeeForCoinType(context.Background(), cointype.CoinType(2))
 		if ska2Result != skaFee {
 			t.Errorf("RelayFeeForCoinType(SKA-2) = %d, expected %d", ska2Result, skaFee)
 		}
@@ -216,12 +226,20 @@ func TestCoinTypeFeeIntegrationScenarios(t *testing.T) {
 		skaRelayFee: dcrutil.Amount(1000),  // SKA: 1000 atoms/KB
 	}
 
+	// Initialize per-cointype fee maps
+	w.manualFees = make(map[cointype.CoinType]*dcrutil.Amount)
+	w.staticFees = make(map[cointype.CoinType]dcrutil.Amount)
+	w.staticFees[cointype.CoinTypeVAR] = dcrutil.Amount(10000)
+	w.staticFees[cointype.CoinType(1)] = dcrutil.Amount(1000)
+	w.staticFees[cointype.CoinType(2)] = dcrutil.Amount(1000)
+	w.staticFees[cointype.CoinType(255)] = dcrutil.Amount(1000)
+
 	t.Run("Scenario: User wants to check current fees", func(t *testing.T) {
 		// User calls getwalletfee (no coin type = VAR default)
-		varFee := w.RelayFeeForCoinType(cointype.CoinTypeVAR)
+		varFee := w.RelayFeeForCoinType(context.Background(), cointype.CoinTypeVAR)
 
 		// User calls getwalletfee 1 (for SKA-1)
-		skaFee := w.RelayFeeForCoinType(cointype.CoinType(1))
+		skaFee := w.RelayFeeForCoinType(context.Background(), cointype.CoinType(1))
 
 		t.Logf("Current fees: VAR=%d atoms/KB, SKA=%d atoms/KB", varFee, skaFee)
 
@@ -258,9 +276,9 @@ func TestCoinTypeFeeIntegrationScenarios(t *testing.T) {
 
 	t.Run("Scenario: Multiple SKA coin types use same fee", func(t *testing.T) {
 		// All SKA coin types should use the same fee setting
-		ska1Fee := w.RelayFeeForCoinType(cointype.CoinType(1))     // SKA-1
-		ska2Fee := w.RelayFeeForCoinType(cointype.CoinType(2))     // SKA-2
-		ska255Fee := w.RelayFeeForCoinType(cointype.CoinType(255)) // SKA-255 (max)
+		ska1Fee := w.RelayFeeForCoinType(context.Background(), cointype.CoinType(1))     // SKA-1
+		ska2Fee := w.RelayFeeForCoinType(context.Background(), cointype.CoinType(2))     // SKA-2
+		ska255Fee := w.RelayFeeForCoinType(context.Background(), cointype.CoinType(255)) // SKA-255 (max)
 
 		if ska1Fee != ska2Fee || ska2Fee != ska255Fee {
 			t.Error("All SKA coin types should use the same fee rate")
