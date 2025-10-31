@@ -2655,3 +2655,53 @@ func upgradeToVersion3(ns walletdb.ReadWriteBucket, chainParams *chaincfg.Params
 
 	return nil
 }
+
+// isSSFeeTx determines if a transaction is an SSFee (Stake/Staker Fee) transaction.
+// SSFee transactions distribute non-VAR coin type fees and have:
+// - Null input (like coinbase)
+// - OP_RETURN output with "SF" or "MF" marker
+func isSSFeeTx(tx *wire.MsgTx) bool {
+	// Must have at least one input and two outputs (payment + OP_RETURN)
+	if len(tx.TxIn) != 1 || len(tx.TxOut) < 2 {
+		return false
+	}
+
+	// Check for null input (same as coinbase)
+	prevOut := &tx.TxIn[0].PreviousOutPoint
+	if prevOut.Index != wire.MaxPrevOutIndex || !prevOut.Hash.IsEqual(&chainhash.Hash{}) {
+		return false
+	}
+
+	// Check for SSFee marker in OP_RETURN outputs
+	return getSSFeeType(tx) != ""
+}
+
+// getSSFeeType returns the SSFee type marker from the transaction's OP_RETURN output.
+// Returns "MF" for miner fees, "SF" for staker fees, or "" if not an SSFee transaction.
+// Format: OP_RETURN + OP_DATA_6 + "SF"/"MF" + height(4 bytes)
+func getSSFeeType(tx *wire.MsgTx) string {
+	for _, out := range tx.TxOut {
+		script := out.PkScript
+		// SSFee OP_RETURN: OP_RETURN(0x6a) + OP_DATA_6(0x06) + "SF"(0x53 0x46) or "MF"(0x4D 0x46)
+		if len(script) >= 8 &&
+			script[0] == txscript.OP_RETURN && // 0x6a
+			script[1] == 0x06 {                // OP_DATA_6
+
+			// Check for "SF" marker (Staker Fee)
+			if script[2] == 0x53 && script[3] == 0x46 {
+				return "SF"
+			}
+			// Check for "MF" marker (Miner Fee)
+			if script[2] == 0x4D && script[3] == 0x46 {
+				return "MF"
+			}
+		}
+	}
+	return ""
+}
+
+// isSSFeeMinerTx checks if a transaction is an SSFee Miner Fee transaction.
+// These transactions should be treated like coinbase for maturity purposes.
+func isSSFeeMinerTx(tx *wire.MsgTx) bool {
+	return getSSFeeType(tx) == "MF"
+}

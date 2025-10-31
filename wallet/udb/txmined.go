@@ -1453,6 +1453,11 @@ func (s *Store) AddCredit(dbtx walletdb.ReadWriteTx, rec *TxRecord, block *Block
 		version := rec.MsgTx.TxOut[index].Version
 		pkScript := rec.MsgTx.TxOut[index].PkScript
 		k := keyCredit(&rec.Hash, index, &block.Block)
+		isCoinbase := compat.IsEitherCoinBaseTx(&rec.MsgTx)
+		// SSFee MF (Miner Fee) transactions should be treated like coinbase for maturity.
+		if !isCoinbase && isSSFeeMinerTx(&rec.MsgTx) {
+			isCoinbase = true
+		}
 		cred := credit{
 			outPoint: wire.OutPoint{
 				Hash:  rec.Hash,
@@ -1463,7 +1468,7 @@ func (s *Store) AddCredit(dbtx walletdb.ReadWriteTx, rec *TxRecord, block *Block
 			change:     change,
 			spentBy:    indexedIncidence{index: ^uint32(0)},
 			opCode:     getStakeOpCode(version, pkScript),
-			isCoinbase: compat.IsEitherCoinBaseTx(&rec.MsgTx),
+			isCoinbase: isCoinbase,
 			hasExpiry:  rec.MsgTx.Expiry != 0,
 			coinType:   rec.MsgTx.TxOut[index].CoinType,
 		}
@@ -1536,6 +1541,13 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 	scriptVersion, pkScript := rec.MsgTx.TxOut[index].Version, rec.MsgTx.TxOut[index].PkScript
 	opCode := getStakeOpCode(scriptVersion, pkScript)
 	isCoinbase := compat.IsEitherCoinBaseTx(&rec.MsgTx)
+
+	// SSFee MF (Miner Fee) transactions should be treated like coinbase for maturity.
+	// They distribute fees to miners and need the same maturity period as regular coinbase.
+	if !isCoinbase && isSSFeeMinerTx(&rec.MsgTx) {
+		isCoinbase = true
+	}
+
 	hasExpiry := rec.MsgTx.Expiry != wire.NoExpiryValue
 
 	if block == nil {
@@ -3800,10 +3812,17 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 
 			switch opcode {
 			case opNonstake:
-				// SKA transactions: emission, transfers - always spendable when confirmed
+				// SKA transactions: emission, transfers, and SSFee
 				isConfirmed := confirmed(minConf, height, syncHeight)
-				if isConfirmed {
+				creditFromCoinbase := fetchRawCreditIsCoinbase(cVal)
+				matureCoinbase := (creditFromCoinbase &&
+					coinbaseMatured(s.chainParams, height, syncHeight))
+
+				// SSFee MF (miner fee) outputs for SKA are treated like coinbase
+				if (isConfirmed && !creditFromCoinbase) || matureCoinbase {
 					coinBalance.Spendable += utxoAmt
+				} else if creditFromCoinbase && !matureCoinbase {
+					coinBalance.ImmatureCoinbaseRewards += utxoAmt
 				}
 				coinBalance.Total += utxoAmt
 			default:
