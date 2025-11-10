@@ -622,9 +622,15 @@ func (s *Server) consolidate(ctx context.Context, icmd any) (any, error) {
 		}
 	}
 
+	// Get coin type (default to VAR if not specified)
+	ct := cointype.CoinTypeVAR
+	if cmd.CoinType != nil {
+		ct = cointype.CoinType(*cmd.CoinType)
+	}
+
 	// TODO In the future this should take the optional account and
 	// only consolidate UTXOs found within that account.
-	txHash, err := w.Consolidate(ctx, cmd.Inputs, account, changeAddr)
+	txHash, err := w.ConsolidateWithCoinType(ctx, cmd.Inputs, account, changeAddr, ct)
 	if err != nil {
 		return nil, err
 	}
@@ -2029,7 +2035,10 @@ func (s *Server) getAccountAddress(ctx context.Context, icmd any) (any, error) {
 		}
 		return nil, err
 	}
-	addr, err := w.CurrentAddress(account)
+
+	// Get the current address and persist it to the database so it can be
+	// found when receiving transactions and appears in getaddressesbyaccount.
+	addr, err := w.CurrentAddressAndPersist(ctx, account)
 	if err != nil {
 		// Expect account lookup to succeed
 		if errors.Is(err, errors.NotExist) {

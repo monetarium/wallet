@@ -3308,6 +3308,10 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 	}
 
 	f := func(target dcrutil.Amount) (*txauthor.InputDetail, error) {
+		log.Debugf("[UTXO_DEBUG] MakeInputSourceWithCoinType START: target=%v, coinType=%d, account=%d, minConf=%d, syncHeight=%d",
+			target, coinType, account, minConf, syncHeight)
+		log.Debugf("[UTXO_DEBUG] Available UTXOs in bucket for coinType=%d: %d", coinType, numUnspent)
+
 		for currentTotal < target || target == 0 {
 			var k, v []byte
 			var err error
@@ -3410,6 +3414,8 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 			var op wire.OutPoint
 			var amt dcrutil.Amount
 			var pkScript []byte
+			var txHeight int32
+			var txOpcode byte
 
 			if !unmined {
 				cKey := make([]byte, 72)
@@ -3432,6 +3438,7 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 					return nil, err
 				}
 				if account != thisAcct {
+					log.Debugf("[UTXO_DEBUG] Skipping UTXO: wrong account (want=%d, got=%d)", account, thisAcct)
 					continue
 				}
 
@@ -3444,31 +3451,40 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				// This should never happen since this is already in bucket
 				// unspent, but let's be careful anyway.
 				if spent {
+					log.Debugf("[UTXO_DEBUG] Skipping UTXO: already spent (amount=%v)", amt)
 					continue
 				}
 
 				// Skip zero value outputs.
 				if amt == 0 {
+					log.Debugf("[UTXO_DEBUG] Skipping UTXO: zero value")
 					continue
 				}
 
 				// Skip ticket outputs, as only SSGen can spend these.
 				opcode := fetchRawCreditTagOpCode(cVal)
 				if opcode == txscript.OP_SSTX {
+					log.Debugf("[UTXO_DEBUG] Skipping UTXO: ticket output (amount=%v)", amt)
 					continue
 				}
 
 				// Only include this output if it meets the required number of
 				// confirmations.  Coinbase transactions must have reached
 				// maturity before their outputs may be spent.
-				txHeight := extractRawCreditHeight(cKey)
+				txHeight = extractRawCreditHeight(cKey)
+				confs := syncHeight - txHeight + 1
 				if !confirmed(minConf, txHeight, syncHeight) {
+					log.Debugf("[UTXO_DEBUG] Skipping UTXO: insufficient confirmations (amount=%v, height=%d, confs=%d, need=%d)",
+						amt, txHeight, confs, minConf)
 					continue
 				}
 
 				// Skip outputs that are not mature.
+				// opcode already fetched above
+				txOpcode = opcode
 				if opcode == opNonstake && fetchRawCreditIsCoinbase(cVal) {
 					if !coinbaseMatured(s.chainParams, txHeight, syncHeight) {
+						log.Debugf("[UTXO_DEBUG] Skipping UTXO: coinbase not mature (amount=%v, height=%d)", amt, txHeight)
 						continue
 					}
 				}
@@ -3476,11 +3492,13 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				case txscript.OP_SSGEN, txscript.OP_SSRTX, txscript.OP_TADD,
 					txscript.OP_TGEN:
 					if !coinbaseMatured(s.chainParams, txHeight, syncHeight) {
+						log.Debugf("[UTXO_DEBUG] Skipping UTXO: stake output not mature (amount=%v, height=%d, opcode=%v)", amt, txHeight, opcode)
 						continue
 					}
 				}
 				if opcode == txscript.OP_SSTXCHANGE {
 					if !ticketChangeMatured(s.chainParams, txHeight, syncHeight) {
+						log.Debugf("[UTXO_DEBUG] Skipping UTXO: ticket change not mature (amount=%v, height=%d)", amt, txHeight)
 						continue
 					}
 				}
@@ -3518,10 +3536,13 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 					return nil, err
 				}
 
+				txHeight = 0 // unmined
+
 				// Determine the txtree for the outpoint by whether or not it's
 				// using stake tagged outputs.
 				tree = wire.TxTreeRegular
 				opcode := fetchRawUnminedCreditTagOpCode(v)
+				txOpcode = opcode
 				if opcode != opNonstake {
 					tree = wire.TxTreeStake
 				}
@@ -3557,11 +3578,19 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				continue
 			}
 
+			log.Debugf("[UTXO_DEBUG] SELECTED UTXO: amount=%v, height=%d, opcode=%v, scriptClass=%v, unmined=%v",
+				amt, txHeight, txOpcode, scriptSubClass, unmined)
+
 			currentTotal += amt
 			currentInputs = append(currentInputs, input)
 			currentScripts = append(currentScripts, pkScript)
 			redeemScriptSizes = append(redeemScriptSizes, scriptSize)
+
+			log.Debugf("[UTXO_DEBUG] Current total: %v (added %v, now have %d inputs)", currentTotal, amt, len(currentInputs))
 		}
+
+		log.Debugf("[UTXO_DEBUG] MakeInputSourceWithCoinType END: target=%v, totalSelected=%v, numInputs=%d, satisfied=%v",
+			target, currentTotal, len(currentInputs), currentTotal >= target || target == 0)
 
 		inputDetail := &txauthor.InputDetail{
 			Amount:            currentTotal,
@@ -3812,7 +3841,7 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 
 			switch opcode {
 			case opNonstake:
-				// SKA transactions: emission, transfers, and SSFee
+				// SKA transactions: emission, transfers, and SSFee MF (miner fee)
 				isConfirmed := confirmed(minConf, height, syncHeight)
 				creditFromCoinbase := fetchRawCreditIsCoinbase(cVal)
 				matureCoinbase := (creditFromCoinbase &&
@@ -3823,6 +3852,15 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 					coinBalance.Spendable += utxoAmt
 				} else if creditFromCoinbase && !matureCoinbase {
 					coinBalance.ImmatureCoinbaseRewards += utxoAmt
+				}
+				coinBalance.Total += utxoAmt
+			case txscript.OP_SSGEN:
+				// SSFee SF (staker fee) outputs for SKA use OP_SSGEN scripts
+				// These are copied from vote reward outputs and need coinbase maturity
+				if coinbaseMatured(s.chainParams, height, syncHeight) {
+					coinBalance.Spendable += utxoAmt
+				} else {
+					coinBalance.ImmatureStakeGeneration += utxoAmt
 				}
 				coinBalance.Total += utxoAmt
 			default:
@@ -3983,7 +4021,28 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 			}
 
 			coinBalance := ab.CoinTypeBalances[coinType]
-			coinBalance.Total += utxoAmt
+			opcode := fetchRawUnminedCreditTagOpCode(v)
+			txHash := k[:32]
+			unpublished := existsUnpublished(ns, txHash)
+
+			switch opcode {
+			case opNonstake:
+				// SSFee MF (miner fee) or regular SKA transfers
+				if minConf == 0 && !unpublished {
+					coinBalance.Spendable += utxoAmt
+				} else if !fetchRawUnminedCreditTagIsCoinbase(v) {
+					coinBalance.Unconfirmed += utxoAmt
+				}
+				coinBalance.Total += utxoAmt
+			case txscript.OP_SSGEN:
+				// SSFee SF (staker fee) - always immature when unmined
+				coinBalance.ImmatureStakeGeneration += utxoAmt
+				coinBalance.Total += utxoAmt
+			default:
+				log.Warnf("Unhandled unmined SKA opcode %v for coin type %v", opcode, coinType)
+				coinBalance.Total += utxoAmt
+			}
+
 			ab.CoinTypeBalances[coinType] = coinBalance
 		}
 		c.Close()

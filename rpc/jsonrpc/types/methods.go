@@ -100,14 +100,20 @@ type AuditReuseCmd struct {
 // unmarshaling of consolidate JSON wallet extension
 // commands.
 type ConsolidateCmd struct {
-	Inputs  int `json:"inputs"`
-	Account *string
-	Address *string
+	Inputs   int     `json:"inputs"`
+	Account  *string
+	Address  *string
+	CoinType *uint8  `json:"cointype,omitempty"` // Optional: specify coin type (0=VAR, 1-255=SKA)
 }
 
 // NewConsolidateCmd creates a new ConsolidateCmd.
 func NewConsolidateCmd(inputs int, acct *string, addr *string) *ConsolidateCmd {
 	return &ConsolidateCmd{Inputs: inputs, Account: acct, Address: addr}
+}
+
+// NewConsolidateCmdWithCoinType creates a new ConsolidateCmd with coin type specified.
+func NewConsolidateCmdWithCoinType(inputs int, acct *string, addr *string, coinType *uint8) *ConsolidateCmd {
+	return &ConsolidateCmd{Inputs: inputs, Account: acct, Address: addr, CoinType: coinType}
 }
 
 // CreateMultisigCmd defines the createmultisig JSON-RPC command.
