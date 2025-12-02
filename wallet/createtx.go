@@ -456,9 +456,8 @@ func (w *Wallet) authorTx(ctx context.Context, op errors.Op, a *authorTx) error 
 
 		// Determine coin type from outputs for coin-type-aware UTXO selection
 		var inputSource udb.InputSource
-		txCoinType := cointype.CoinTypeVAR
 		if len(a.outputs) > 0 {
-			txCoinType = a.outputs[0].CoinType
+			txCoinType := a.outputs[0].CoinType
 			inputSource = w.txStore.MakeInputSourceWithCoinType(dbtx, a.account,
 				a.minconf, tipHeight, ignoreInput, txCoinType)
 		}
@@ -2176,11 +2175,12 @@ func newVoteScript(voteBits stake.VoteBits) ([]byte, error) {
 // createUnsignedVote creates an unsigned vote transaction that votes using the
 // ticket specified by a ticket purchase hash and transaction with the provided
 // vote bits.  The block height and hash must be of the previous block the vote
-// is voting on.
+// is voting on.  The consolidationHash160 parameter specifies the 20-byte hash160
+// address where batched SSFee UTXOs should be sent by miners.
 func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 	blockHeight int32, blockHash *chainhash.Hash, voteBits stake.VoteBits,
 	subsidyCache *blockchain.SubsidyCache, params *chaincfg.Params,
-	dcp0010Active, dcp0012Active bool) (*wire.MsgTx, error) {
+	dcp0010Active, dcp0012Active bool, consolidationHash160 []byte) (*wire.MsgTx, error) {
 
 	// Parse the ticket purchase transaction to determine the required output
 	// destinations for vote rewards or revocations.
@@ -2261,6 +2261,15 @@ func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 	// SSFee transactions created by the mining code, not through vote outputs.
 	// Votes only contain VAR rewards (stake return + subsidy + VAR fees).
 	// See dcrd/internal/mining/mining.go createSSFeeTx() for SKA fee distribution.
+
+	// Add SSFee consolidation address output (REQUIRED)
+	// This output tells miners where to send batched SSFee UTXOs for this voter.
+	// Output format: OP_RETURN OP_DATA_22 "SC" <20-byte hash160>
+	consolidationOut, err := stake.CreateSSFeeConsolidationOutput(consolidationHash160)
+	if err != nil {
+		return nil, err
+	}
+	vote.AddTxOut(consolidationOut)
 
 	return vote, nil
 }

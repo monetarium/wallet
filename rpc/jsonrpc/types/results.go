@@ -196,6 +196,14 @@ type GetVoteChoicesResult struct {
 	Choices []VoteChoice `json:"choices"`
 }
 
+// GetVoteFeeConsolidationAddressResult models the data returned from the
+// getvotefeeconsolidationaddress command.
+type GetVoteFeeConsolidationAddressResult struct {
+	Account   string `json:"account"`
+	Address   string `json:"address"`
+	IsDefault bool   `json:"isdefault"` // True if using auto-default (first external address)
+}
+
 // SyncStatusResult models the data returned by the syncstatus command.
 type SyncStatusResult struct {
 	Synced               bool    `json:"synced"`

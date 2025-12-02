@@ -137,15 +137,15 @@ type Wallet struct {
 	lockedOutpoints  map[outpoint]struct{}
 	lockedOutpointMu sync.Mutex
 
-	relayFee                   dcrutil.Amount
-	relayFeeMu                 sync.Mutex
-	skaRelayFee                dcrutil.Amount
-	skaRelayFeeMu              sync.Mutex
+	relayFee      dcrutil.Amount
+	relayFeeMu    sync.Mutex
+	skaRelayFee   dcrutil.Amount
+	skaRelayFeeMu sync.Mutex
 
 	// Per-cointype fee management (manual overrides + static fallbacks)
-	manualFees   map[cointype.CoinType]*dcrutil.Amount  // nil = use RPC
-	staticFees   map[cointype.CoinType]dcrutil.Amount   // config fallback
-	feesMu       sync.RWMutex
+	manualFees map[cointype.CoinType]*dcrutil.Amount // nil = use RPC
+	staticFees map[cointype.CoinType]dcrutil.Amount  // config fallback
+	feesMu     sync.RWMutex
 
 	allowHighFees              bool
 	disableCoinTypeUpgrades    bool
@@ -764,6 +764,239 @@ func (w *Wallet) SetTSpendPolicy(ctx context.Context, tspendHash *chainhash.Hash
 
 	w.tspendPolicy[*tspendHash] = policy
 	return nil
+}
+
+// SetVoteFeeConsolidationAddress sets the consolidation address for a specific
+// account. This address will be included in vote transactions to specify where
+// SSFee payments should be sent, enabling UTXO consolidation.
+//
+// The accountNameOrNumber parameter can be either an account name (string) or
+// account number (string representation of uint32).
+func (w *Wallet) SetVoteFeeConsolidationAddress(ctx context.Context,
+	accountNameOrNumber string, address stdaddr.Address) error {
+
+	const op errors.Op = "wallet.SetVoteFeeConsolidationAddress"
+
+	// Extract hash160 from the address
+	hash160er, ok := address.(stdaddr.Hash160er)
+	if !ok {
+		return errors.E(op, errors.Invalid,
+			"address must be P2PKH-compatible (provide hash160)")
+	}
+	hash160 := hash160er.Hash160()
+	if hash160 == nil || len(*hash160) != 20 {
+		return errors.E(op, errors.Invalid, "invalid address hash160")
+	}
+
+	// Resolve account name from name or number
+	accountName, err := w.resolveAccountName(ctx, accountNameOrNumber)
+	if err != nil {
+		return errors.E(op, err)
+	}
+
+	// Store the consolidation address in the database
+	err = walletdb.Update(ctx, w.db, func(dbtx walletdb.ReadWriteTx) error {
+		return udb.SetAccountConsolidationAddr(dbtx, accountName, (*hash160)[:])
+	})
+	if err != nil {
+		return errors.E(op, err)
+	}
+
+	return nil
+}
+
+// GetVoteFeeConsolidationAddress retrieves the consolidation address for a
+// specific account. If no custom address has been set, this returns the first
+// external address (index 0) for the account as the default.
+//
+// The accountNameOrNumber parameter can be either an account name (string) or
+// account number (string representation of uint32).
+func (w *Wallet) GetVoteFeeConsolidationAddress(ctx context.Context,
+	accountNameOrNumber string) (stdaddr.Address, error) {
+
+	const op errors.Op = "wallet.GetVoteFeeConsolidationAddress"
+
+	// Resolve account name from name or number
+	accountName, err := w.resolveAccountName(ctx, accountNameOrNumber)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	var hash160 []byte
+	err = walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
+		// Try to get custom consolidation address
+		customHash160, err := udb.GetAccountConsolidationAddr(dbtx, accountName)
+		if err != nil {
+			return err
+		}
+
+		if customHash160 != nil {
+			// Custom address is set
+			hash160 = customHash160
+			return nil
+		}
+
+		// No custom address - get the first external address (index 0) as default
+		hash160, err = w.getFirstExternalAddressHash160(dbtx, accountName)
+		return err
+	})
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	// Convert hash160 to address
+	addr, err := stdaddr.NewAddressPubKeyHashEcdsaSecp256k1V0(hash160, w.chainParams)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	return addr, nil
+}
+
+// ClearVoteFeeConsolidationAddress clears the custom consolidation address for
+// a specific account, causing it to revert to the default (first external address).
+//
+// The accountNameOrNumber parameter can be either an account name (string) or
+// account number (string representation of uint32).
+func (w *Wallet) ClearVoteFeeConsolidationAddress(ctx context.Context,
+	accountNameOrNumber string) error {
+
+	const op errors.Op = "wallet.ClearVoteFeeConsolidationAddress"
+
+	// Resolve account name from name or number
+	accountName, err := w.resolveAccountName(ctx, accountNameOrNumber)
+	if err != nil {
+		return errors.E(op, err)
+	}
+
+	// Clear the consolidation address from the database
+	err = walletdb.Update(ctx, w.db, func(dbtx walletdb.ReadWriteTx) error {
+		return udb.ClearAccountConsolidationAddr(dbtx, accountName)
+	})
+	if err != nil {
+		return errors.E(op, err)
+	}
+
+	return nil
+}
+
+// HasCustomConsolidationAddress checks if a custom consolidation address is set
+// for the specified account. Returns true if a custom address is set, false if
+// using the default address.
+func (w *Wallet) HasCustomConsolidationAddress(ctx context.Context,
+	accountNameOrNumber string) (bool, error) {
+
+	const op errors.Op = "wallet.HasCustomConsolidationAddress"
+
+	// Resolve account name from name or number
+	accountName, err := w.resolveAccountName(ctx, accountNameOrNumber)
+	if err != nil {
+		return false, errors.E(op, err)
+	}
+
+	var hasCustom bool
+	err = walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
+		customAddr, err := udb.GetAccountConsolidationAddr(dbtx, accountName)
+		hasCustom = (customAddr != nil && err == nil)
+		return nil
+	})
+	if err != nil {
+		return false, errors.E(op, err)
+	}
+
+	return hasCustom, nil
+}
+
+// resolveAccountName converts an account name or number string to an account name.
+// If the input is a number, it looks up the corresponding account name.
+// If the input is already a name, it validates that the account exists.
+func (w *Wallet) resolveAccountName(ctx context.Context, nameOrNumber string) (string, error) {
+	const op errors.Op = "wallet.resolveAccountName"
+
+	// Try to parse as account number
+	var accountNumber uint32
+	_, err := fmt.Sscanf(nameOrNumber, "%d", &accountNumber)
+	if err == nil {
+		// It's a number - look up the account name
+		name, err := w.AccountName(ctx, accountNumber)
+		if err != nil {
+			return "", errors.E(op, err)
+		}
+		return name, nil
+	}
+
+	// It's a name - validate that the account exists
+	err = walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
+		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
+		_, err := w.manager.LookupAccount(addrmgrNs, nameOrNumber)
+		return err
+	})
+	if err != nil {
+		return "", errors.E(op, err)
+	}
+
+	return nameOrNumber, nil
+}
+
+// getFirstExternalAddressHash160 retrieves the hash160 of the first external
+// address (index 0) for a specific account. This is used as the default
+// consolidation address when no custom address has been set.
+func (w *Wallet) getFirstExternalAddressHash160(dbtx walletdb.ReadTx,
+	accountName string) ([]byte, error) {
+
+	const op errors.Op = "wallet.getFirstExternalAddressHash160"
+
+	addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
+
+	// Look up account number by name
+	accountNumber, err := w.manager.LookupAccount(addrmgrNs, accountName)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	// Get the account extended public key
+	acctXpub, err := w.manager.AccountExtendedPubKey(dbtx, accountNumber)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	// Get the external branch extended public key
+	extXpub, err := acctXpub.Child(udb.ExternalBranch)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	// Derive the first address (index 0)
+	addr0Xpub, err := extXpub.Child(0)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	// Get the public key
+	pubKey := addr0Xpub.SerializedPubKey()
+
+	// Calculate hash160 (RIPEMD160(SHA256(pubKey)))
+	addr, err := stdaddr.NewAddressPubKeyEcdsaSecp256k1V0Raw(pubKey, w.chainParams)
+	if err != nil {
+		return nil, errors.E(op, err)
+	}
+
+	// Convert to P2PKH address which implements Hash160er
+	pkh := addr.AddressPubKeyHash()
+	hash160er, ok := pkh.(stdaddr.Hash160er)
+	if !ok {
+		return nil, errors.E(op, errors.IO, "failed to extract hash160 from address")
+	}
+
+	hash160 := hash160er.Hash160()
+	if hash160 == nil || len(*hash160) != 20 {
+		return nil, errors.E(op, errors.IO, "invalid hash160 from first external address")
+	}
+
+	// Return a copy
+	result := make([]byte, 20)
+	copy(result, (*hash160)[:])
+	return result, nil
 }
 
 // VSPMaxFee is the maximum fee to pay when registering a ticket with a VSP.
@@ -2146,7 +2379,7 @@ func (w *Wallet) AccountBalancesByCoinType(ctx context.Context, coinType cointyp
 	var coinBalances []CoinBalance
 	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
-		
+
 		// Get all accounts and fetch balance for each
 		return w.manager.ForEachAccount(addrmgrNs, func(acct uint32) error {
 			balance, err := w.txStore.AccountBalanceByCoinType(dbtx, confirms, acct, coinType)
@@ -2188,14 +2421,14 @@ func (w *Wallet) TotalBalanceByCoinType(ctx context.Context, coinType cointype.C
 
 	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
-		
+
 		// Iterate through all accounts and sum up balances for the specific coin type
 		return w.manager.ForEachAccount(addrmgrNs, func(acct uint32) error {
 			balance, err := w.txStore.AccountBalanceByCoinType(dbtx, confirms, acct, coinType)
 			if err != nil {
 				return err
 			}
-			
+
 			// Sum up all balance fields
 			total.ImmatureCoinbaseRewards += balance.ImmatureCoinbaseRewards
 			total.ImmatureStakeGeneration += balance.ImmatureStakeGeneration
@@ -2204,7 +2437,7 @@ func (w *Wallet) TotalBalanceByCoinType(ctx context.Context, coinType cointype.C
 			total.Total += balance.Total
 			total.VotingAuthority += balance.VotingAuthority
 			total.Unconfirmed += balance.Unconfirmed
-			
+
 			return nil
 		})
 	})
@@ -2236,20 +2469,20 @@ func (w *Wallet) ListCoinTypes(ctx context.Context, confirms int32) ([]cointype.
 	var coinTypes []cointype.CoinType
 	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
 		ns := dbtx.ReadBucket(wtxmgrNamespaceKey)
-		
+
 		// Check VAR bucket first (always present)
 		varBucket := ns.NestedReadBucket([]byte("u:0")) // bucketUnspentForCoinType(cointype.CoinTypeVAR)
 		if varBucket != nil && varBucket.KeyN() > 0 {
 			coinTypes = append(coinTypes, cointype.CoinTypeVAR)
 		}
-		
+
 		// Check only active SKA coin types from chain params
 		if w.chainParams != nil && w.chainParams.SKACoins != nil {
 			for coinType, config := range w.chainParams.SKACoins {
 				if !config.Active {
 					continue
 				}
-				
+
 				// Check if this coin type has any unspent outputs or unmined credits
 				bucketName := fmt.Sprintf("u:%d", coinType)
 				bucket := ns.NestedReadBucket([]byte(bucketName))
@@ -2257,7 +2490,7 @@ func (w *Wallet) ListCoinTypes(ctx context.Context, confirms int32) ([]cointype.
 					coinTypes = append(coinTypes, coinType)
 					continue
 				}
-				
+
 				// Also check unmined credits
 				unminedBucketName := fmt.Sprintf("mc:%d", coinType)
 				unminedBucket := ns.NestedReadBucket([]byte(unminedBucketName))
@@ -2266,18 +2499,18 @@ func (w *Wallet) ListCoinTypes(ctx context.Context, confirms int32) ([]cointype.
 				}
 			}
 		}
-		
+
 		return nil
 	})
 	if err != nil {
 		return nil, errors.E(op, err)
 	}
-	
+
 	// Sort coin types in ascending order
 	sort.Slice(coinTypes, func(i, j int) bool {
 		return coinTypes[i] < coinTypes[j]
 	})
-	
+
 	return coinTypes, nil
 }
 
@@ -3762,7 +3995,7 @@ type AccountsResult struct {
 // inefficient loops that iterate through all 256 possible coin types.
 func (w *Wallet) getActiveCoinTypes() []cointype.CoinType {
 	activeCoinTypes := []cointype.CoinType{cointype.CoinType(0)} // Always include VAR
-	
+
 	// Add active SKA coin types from chain parameters
 	if w.chainParams != nil && w.chainParams.SKACoins != nil {
 		for coinType, config := range w.chainParams.SKACoins {
@@ -3771,7 +4004,7 @@ func (w *Wallet) getActiveCoinTypes() []cointype.CoinType {
 			}
 		}
 	}
-	
+
 	return activeCoinTypes
 }
 

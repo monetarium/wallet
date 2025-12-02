@@ -197,9 +197,11 @@ func setup() error {
 			var spender *wire.MsgTx
 			switch i {
 			case 2, 3:
+				// Use a dummy consolidation address for testing (all zeros)
+				dummyHash160 := make([]byte, 20)
 				spender, err = createUnsignedVote(&ticketRec.Hash, ticket,
 					height+1, &chainhash.Hash{31: byte(height + 1)}, votebits,
-					subsidies, chainParams)
+					subsidies, chainParams, dummyHash160)
 			case 4, 5:
 				spender, err = createUnsignedRevocation(&ticketRec.Hash, ticket, 1e5)
 			}
@@ -310,10 +312,12 @@ func newVoteScript(voteBits stake.VoteBits) ([]byte, error) {
 // createUnsignedVote creates an unsigned vote transaction that votes using the
 // ticket specified by a ticket purchase hash and transaction with the provided
 // vote bits.  The block height and hash must be of the previous block the vote
-// is voting on.
+// is voting on.  The consolidationHash160 parameter specifies the 20-byte hash160
+// address where batched SSFee UTXOs should be sent by miners.
 func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 	blockHeight int32, blockHash *chainhash.Hash, voteBits stake.VoteBits,
-	subsidyCache *blockchain.SubsidyCache, params *chaincfg.Params) (*wire.MsgTx, error) {
+	subsidyCache *blockchain.SubsidyCache, params *chaincfg.Params,
+	consolidationHash160 []byte) (*wire.MsgTx, error) {
 
 	// Parse the ticket purchase transaction to determine the required output
 	// destinations for vote rewards or revocations.
@@ -368,6 +372,15 @@ func createUnsignedVote(ticketHash *chainhash.Hash, ticketPurchase *wire.MsgTx,
 		script, _ := scriptFn(hash160)
 		vote.AddTxOut(wire.NewTxOut(voteRewardValues[i], script))
 	}
+
+	// Add SSFee consolidation address output (REQUIRED)
+	// This output tells miners where to send batched SSFee UTXOs for this voter.
+	// Output format: OP_RETURN OP_DATA_22 "SC" <20-byte hash160>
+	consolidationOut, err := stake.CreateSSFeeConsolidationOutput(consolidationHash160)
+	if err != nil {
+		return nil, err
+	}
+	vote.AddTxOut(consolidationOut)
 
 	return vote, nil
 }

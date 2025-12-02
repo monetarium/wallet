@@ -219,10 +219,15 @@ const (
 	// UTXO queries without runtime filtering.
 	coinTypeBucketsVersion = 28
 
+	// consolidationAddressVersion is the 29th version of the database. It creates
+	// a bucket for storing per-account consolidation addresses used for SSFee
+	// UTXO consolidation in vote transactions.
+	consolidationAddressVersion = 29
+
 	// DBVersion is the latest version of the database that is understood by the
 	// program.  Databases with recorded versions higher than this will fail to
 	// open (meaning any upgrades prevent reverting to older software).
-	DBVersion = coinTypeBucketsVersion
+	DBVersion = consolidationAddressVersion
 )
 
 // upgrades maps between old database versions and the upgrade function to
@@ -254,8 +259,9 @@ var upgrades = [...]func(walletdb.ReadWriteTx, []byte, *chaincfg.Params) error{
 	vspTreasuryPoliciesVersion - 1:        vspTreasuryPoliciesUpgrade,
 	importVotingAccountVersion - 1:        importVotingAccountUpgrade,
 	birthBlockVersion - 1:                 birthBlockUpgrade,
-	dualCoinVersion - 1:                    dualCoinUpgrade,
-	coinTypeBucketsVersion - 1:             coinTypeBucketsUpgrade,
+	dualCoinVersion - 1:                   dualCoinUpgrade,
+	coinTypeBucketsVersion - 1:            coinTypeBucketsUpgrade,
+	consolidationAddressVersion - 1:       consolidationAddressUpgrade,
 }
 
 func lastUsedAddressIndexUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
@@ -1764,12 +1770,12 @@ func coinTypeBucketsUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, pa
 			if len(k) < 36 || len(v) < 36 {
 				return nil // Skip invalid entries
 			}
-			
+
 			credKey := make([]byte, 72)
 			copy(credKey, k[:32])
 			copy(credKey[32:68], v)
 			copy(credKey[68:72], k[32:36])
-			
+
 			cVal := creditsBucket.Get(credKey)
 			if cVal == nil {
 				return nil // Skip if credit not found
@@ -1853,4 +1859,30 @@ func Upgrade(ctx context.Context, db walletdb.DB, publicPassphrase []byte, param
 		}
 		return nil
 	})
+}
+
+// consolidationAddressUpgrade creates the account consolidation bucket for
+// storing per-account SSFee consolidation addresses.
+func consolidationAddressUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
+	const oldVersion = 28
+	const newVersion = 29
+
+	// Assert that this function is only called on version 28 databases.
+	metadataBucket := tx.ReadWriteBucket(unifiedDBMetadata{}.rootBucketKey())
+	dbVersion, err := unifiedDBMetadata{}.getVersion(metadataBucket)
+	if err != nil {
+		return err
+	}
+	if dbVersion != oldVersion {
+		return errors.E(errors.Invalid, errors.Errorf("consolidationAddressUpgrade inappropriately called"))
+	}
+
+	// Create the account consolidation bucket
+	_, err = tx.CreateTopLevelBucket(accountConsolidationBucketKey)
+	if err != nil {
+		return errors.E(errors.IO, err)
+	}
+
+	// Update the database version
+	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)
 }

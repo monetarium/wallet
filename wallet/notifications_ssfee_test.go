@@ -17,21 +17,21 @@ import (
 // TestTxTransactionTypeSSFee tests that SSFee transactions are correctly identified in notifications
 func TestTxTransactionTypeSSFee(t *testing.T) {
 	t.Parallel()
-	
+
 	// Create a valid SSFee transaction
 	ssFeeTx := createMockSSFeeTx(cointype.CoinType(1), 3, 1000)
-	
+
 	// Test that it's identified as SSFee type
 	txType := TxTransactionType(ssFeeTx)
 	if txType != TransactionTypeSSFee {
 		t.Errorf("TxTransactionType(ssFeeTx) = %v, want TransactionTypeSSFee", txType)
 	}
-	
+
 	// Test that stake.IsSSFee also recognizes it
 	if !stake.IsSSFee(ssFeeTx) {
 		t.Error("stake.IsSSFee(ssFeeTx) = false, want true")
 	}
-	
+
 	// Test that it's NOT identified as other types
 	if stake.IsSStx(ssFeeTx) {
 		t.Error("SSFee incorrectly identified as SStx")
@@ -47,7 +47,7 @@ func TestTxTransactionTypeSSFee(t *testing.T) {
 // TestSSFeeTransactionNotifications tests various notification scenarios for SSFee transactions
 func TestSSFeeTransactionNotifications(t *testing.T) {
 	t.Parallel()
-	
+
 	tests := []struct {
 		name        string
 		createTx    func() *wire.MsgTx
@@ -129,16 +129,17 @@ func TestSSFeeTransactionNotifications(t *testing.T) {
 			description: "Coinbase should not be identified as SSFee",
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			tx := test.createTx()
 			txType := TxTransactionType(tx)
-			
+
 			if txType != test.wantType {
 				t.Errorf("%s: got type %v, want %v", test.description, txType, test.wantType)
 			}
-			
+
 			// Additional check for SSFee transactions
 			if test.wantType == TransactionTypeSSFee {
 				if !stake.IsSSFee(tx) {
@@ -156,7 +157,7 @@ func TestSSFeeTransactionNotifications(t *testing.T) {
 // TestSSFeeNotificationEdgeCases tests edge cases for SSFee transaction notifications
 func TestSSFeeNotificationEdgeCases(t *testing.T) {
 	t.Parallel()
-	
+
 	tests := []struct {
 		name      string
 		createTx  func() *wire.MsgTx
@@ -220,7 +221,7 @@ func TestSSFeeNotificationEdgeCases(t *testing.T) {
 				opReturnScript := []byte{
 					txscript.OP_RETURN, // 0x6a
 					0x06,               // OP_DATA_6
-					'S', 'F',          // "SF" marker
+					'S', 'F',           // "SF" marker
 					0x00, 0x00, 0x00, 0x00, // height
 				}
 				tx.AddTxOut(&wire.TxOut{
@@ -235,22 +236,23 @@ func TestSSFeeNotificationEdgeCases(t *testing.T) {
 			reason:    "SSFee with zero-value outputs might occur in edge cases",
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			tx := test.createTx()
 			txType := TxTransactionType(tx)
-			
+
 			if txType != test.wantType {
 				t.Errorf("%s: got type %v, want %v", test.reason, txType, test.wantType)
 			}
-			
+
 			// Check if it's recognized as SSFee by stake package
 			isSSFee := stake.IsSSFee(tx)
 			if test.wantType == TransactionTypeSSFee && !isSSFee {
 				t.Errorf("%s: stake.IsSSFee() = false, want true", test.reason)
 			}
-			
+
 			// Validate if marked as valid
 			if test.wantValid {
 				err := stake.CheckSSFee(tx)
@@ -265,7 +267,7 @@ func TestSSFeeNotificationEdgeCases(t *testing.T) {
 // TestSSFeeDetermineTxType tests that DetermineTxType correctly identifies SSFee
 func TestSSFeeDetermineTxType(t *testing.T) {
 	t.Parallel()
-	
+
 	tests := []struct {
 		name     string
 		tx       *wire.MsgTx
@@ -286,9 +288,10 @@ func TestSSFeeDetermineTxType(t *testing.T) {
 			wantType: stake.TxTypeRegular,
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			txType := stake.DetermineTxType(test.tx)
 			if txType != test.wantType {
 				t.Errorf("DetermineTxType() = %v, want %v", txType, test.wantType)
@@ -300,7 +303,7 @@ func TestSSFeeDetermineTxType(t *testing.T) {
 // TestSSFeeOutputDiscovery tests that SSFee outputs are properly discovered
 func TestSSFeeOutputDiscovery(t *testing.T) {
 	t.Parallel()
-	
+
 	// Create a simple P2PKH script for testing
 	pkScript := []byte{
 		0x76, 0xa9, 0x14, // OP_DUP OP_HASH160 <push 20 bytes>
@@ -309,7 +312,7 @@ func TestSSFeeOutputDiscovery(t *testing.T) {
 		0x10, 0x11, 0x12, 0x13, // 20 bytes of hash
 		0x88, 0xac, // OP_EQUALVERIFY OP_CHECKSIG
 	}
-	
+
 	// Create SSFee transaction with outputs to our address
 	tx := wire.NewMsgTx()
 	tx.Version = 3
@@ -319,7 +322,7 @@ func TestSSFeeOutputDiscovery(t *testing.T) {
 			Index: wire.MaxPrevOutIndex,
 		},
 	})
-	
+
 	// Add multiple outputs to the same address (simulating multiple voters getting rewards)
 	for i := 0; i < 3; i++ {
 		tx.AddTxOut(&wire.TxOut{
@@ -328,12 +331,12 @@ func TestSSFeeOutputDiscovery(t *testing.T) {
 			PkScript: pkScript,
 		})
 	}
-	
+
 	// Add OP_RETURN with proper SF marker
 	opReturnScript := []byte{
 		txscript.OP_RETURN, // 0x6a
 		0x06,               // OP_DATA_6
-		'S', 'F',          // "SF" marker
+		'S', 'F',           // "SF" marker
 		0x00, 0x00, 0x00, 0x00, // height
 	}
 	tx.AddTxOut(&wire.TxOut{
@@ -341,12 +344,12 @@ func TestSSFeeOutputDiscovery(t *testing.T) {
 		PkScript: opReturnScript,
 		CoinType: cointype.CoinType(1),
 	})
-	
+
 	// Verify the transaction is recognized as SSFee
 	if !stake.IsSSFee(tx) {
 		t.Fatal("Transaction not recognized as SSFee")
 	}
-	
+
 	// Check that outputs can be extracted
 	outputCount := 0
 	for i, out := range tx.TxOut {
@@ -360,7 +363,7 @@ func TestSSFeeOutputDiscovery(t *testing.T) {
 			outputCount++
 		}
 	}
-	
+
 	if outputCount != 3 {
 		t.Errorf("Expected 3 reward outputs, got %d", outputCount)
 	}

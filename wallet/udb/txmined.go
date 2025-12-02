@@ -1296,6 +1296,9 @@ func (s *Store) InsertMinedTx(dbtx walletdb.ReadWriteTx, rec *TxRecord, blockHas
 		invalidated = extractRawBlockRecordStakeInvalid(rawBlockRecVal)
 	}
 
+	// Process transaction inputs (including augmented SSFee with real UTXO inputs).
+	// Augmented SSFee transactions spend existing UTXOs to consolidate fees,
+	// preventing dust accumulation. They are processed like regular transactions.
 	for i, input := range rec.MsgTx.TxIn {
 		unspentKey, credKey := existsUnspent(ns, &input.PreviousOutPoint, s.chainParams)
 		if credKey == nil {
@@ -1535,6 +1538,18 @@ func pkScriptType(ver uint16, pkScript []byte) scriptType {
 	return scriptTypeUnspecified
 }
 
+// addCredit creates a credit entry for a transaction output.
+// This function handles all output types including:
+// - Regular transaction outputs
+// - Coinbase outputs
+// - SSFee outputs (both null-input and augmented)
+//
+// For augmented SSFee transactions (Phase 3), the transaction spends an existing
+// UTXO as input and creates a new output with value = input + fee. The wallet
+// automatically handles this by:
+// 1. Creating a debit for the input (when InsertMinedTx processes inputs)
+// 2. Creating a credit for the output (here)
+// 3. Net balance change = output - input = fee amount
 func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *BlockMeta,
 	index uint32, change bool, account uint32) (bool, error) {
 
@@ -1544,8 +1559,21 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 
 	// SSFee MF (Miner Fee) transactions should be treated like coinbase for maturity.
 	// They distribute fees to miners and need the same maturity period as regular coinbase.
+	// This applies to both null-input and augmented SSFee transactions.
 	if !isCoinbase && isSSFeeMinerTx(&rec.MsgTx) {
 		isCoinbase = true
+	}
+
+	// Diagnostic logging for SSFee credit handling
+	ssfeeType := getSSFeeType(&rec.MsgTx)
+	if ssfeeType != "" {
+		blockHeight := int32(-1)
+		if block != nil {
+			blockHeight = block.Block.Height
+		}
+		log.Debugf("SSFee credit: tx=%v index=%d type=%s coinType=%d opcode=%v isCoinbase=%v height=%d value=%d",
+			rec.Hash, index, ssfeeType, rec.MsgTx.TxOut[index].CoinType, opCode, isCoinbase, blockHeight,
+			rec.MsgTx.TxOut[index].Value)
 	}
 
 	hasExpiry := rec.MsgTx.Expiry != wire.NoExpiryValue

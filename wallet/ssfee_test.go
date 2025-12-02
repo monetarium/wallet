@@ -112,6 +112,7 @@ func TestSSFeeTransactionType(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			// Test transaction type detection
 			txType := TxTransactionType(test.tx)
 			if txType != test.wantType {
@@ -186,6 +187,7 @@ func TestSSFeeOutputMaturity(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			// SSFee outputs should use coinbase maturity rules
 			mature := coinbaseMatured(params, test.txHeight, test.tipHeight)
 			if mature != test.wantMature {
@@ -265,6 +267,7 @@ func TestSSFeeOutputSpendability(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			// Check if output would be considered mature
 			mature := coinbaseMatured(params, test.output.ContainingBlock.Height, test.tipHeight)
 			if mature != test.shouldBeSpendable {
@@ -381,6 +384,7 @@ func TestSSFeeInUnspentOutputs(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			// Simulate policy filtering
 			var policy OutputSelectionPolicy
 			if test.policyCoinType != nil {
@@ -481,6 +485,7 @@ func TestSSFeeValidation(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 			err := stake.CheckSSFee(test.tx)
 			valid := err == nil
 

@@ -117,7 +117,7 @@ func TestConsolidateInputCount(t *testing.T) {
 		valid  bool
 	}{
 		{"Zero inputs", 0, false},
-		{"One input", 1, false},      // Need at least 2 to consolidate
+		{"One input", 1, false}, // Need at least 2 to consolidate
 		{"Two inputs", 2, true},
 		{"Ten inputs", 10, true},
 		{"Hundred inputs", 100, true},

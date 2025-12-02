@@ -100,10 +100,10 @@ type AuditReuseCmd struct {
 // unmarshaling of consolidate JSON wallet extension
 // commands.
 type ConsolidateCmd struct {
-	Inputs   int     `json:"inputs"`
+	Inputs   int `json:"inputs"`
 	Account  *string
 	Address  *string
-	CoinType *uint8  `json:"cointype,omitempty"` // Optional: specify coin type (0=VAR, 1-255=SKA)
+	CoinType *uint8 `json:"cointype,omitempty"` // Optional: specify coin type (0=VAR, 1-255=SKA)
 }
 
 // NewConsolidateCmd creates a new ConsolidateCmd.
@@ -573,6 +573,47 @@ func NewGetWalletFeeCmd() *GetWalletFeeCmd {
 func NewGetWalletFeeCmdWithCoinType(coinType int) *GetWalletFeeCmd {
 	return &GetWalletFeeCmd{
 		CoinType: &coinType,
+	}
+}
+
+// GetVoteFeeConsolidationAddressCmd defines the getvotefeeconsolidationaddress JSON-RPC command.
+type GetVoteFeeConsolidationAddressCmd struct {
+	Account string
+}
+
+// NewGetVoteFeeConsolidationAddressCmd returns a new instance which can be used to issue a
+// getvotefeeconsolidationaddress JSON-RPC command.
+func NewGetVoteFeeConsolidationAddressCmd(account string) *GetVoteFeeConsolidationAddressCmd {
+	return &GetVoteFeeConsolidationAddressCmd{
+		Account: account,
+	}
+}
+
+// SetVoteFeeConsolidationAddressCmd defines the setvotefeeconsolidationaddress JSON-RPC command.
+type SetVoteFeeConsolidationAddressCmd struct {
+	Account string
+	Address string
+}
+
+// NewSetVoteFeeConsolidationAddressCmd returns a new instance which can be used to issue a
+// setvotefeeconsolidationaddress JSON-RPC command.
+func NewSetVoteFeeConsolidationAddressCmd(account string, address string) *SetVoteFeeConsolidationAddressCmd {
+	return &SetVoteFeeConsolidationAddressCmd{
+		Account: account,
+		Address: address,
+	}
+}
+
+// ClearVoteFeeConsolidationAddressCmd defines the clearvotefeeconsolidationaddress JSON-RPC command.
+type ClearVoteFeeConsolidationAddressCmd struct {
+	Account string
+}
+
+// NewClearVoteFeeConsolidationAddressCmd returns a new instance which can be used to issue a
+// clearvotefeeconsolidationaddress JSON-RPC command.
+func NewClearVoteFeeConsolidationAddressCmd(account string) *ClearVoteFeeConsolidationAddressCmd {
+	return &ClearVoteFeeConsolidationAddressCmd{
+		Account: account,
 	}
 }
 
@@ -1466,7 +1507,9 @@ func init() {
 		{"gettransaction", (*GetTransactionCmd)(nil)},
 		{"getunconfirmedbalance", (*GetUnconfirmedBalanceCmd)(nil)},
 		{"getvotechoices", (*GetVoteChoicesCmd)(nil)},
+		{"getvotefeeconsolidationaddress", (*GetVoteFeeConsolidationAddressCmd)(nil)},
 		{"getwalletfee", (*GetWalletFeeCmd)(nil)},
+		{"clearvotefeeconsolidationaddress", (*ClearVoteFeeConsolidationAddressCmd)(nil)},
 		{"importcfiltersv2", (*ImportCFiltersV2Cmd)(nil)},
 		{"importprivkey", (*ImportPrivKeyCmd)(nil)},
 		{"importpubkey", (*ImportPubKeyCmd)(nil)},
@@ -1505,6 +1548,7 @@ func init() {
 		{"settspendpolicy", (*SetTSpendPolicyCmd)(nil)},
 		{"settxfee", (*SetTxFeeCmd)(nil)},
 		{"setvotechoice", (*SetVoteChoiceCmd)(nil)},
+		{"setvotefeeconsolidationaddress", (*SetVoteFeeConsolidationAddressCmd)(nil)},
 		{"signmessage", (*SignMessageCmd)(nil)},
 		{"signrawtransaction", (*SignRawTransactionCmd)(nil)},
 		{"signrawtransactions", (*SignRawTransactionsCmd)(nil)},

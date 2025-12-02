@@ -629,7 +629,6 @@ func selectOwnedTickets(w *Wallet, dbtx walletdb.ReadTx, tickets []*chainhash.Ha
 	return owned
 }
 
-
 // VoteOnOwnedTickets creates and publishes vote transactions for all owned
 // tickets in the winningTicketHashes slice if wallet voting is enabled.  The
 // vote is only valid when voting on the block described by the passed block
@@ -704,6 +703,57 @@ func (w *Wallet) VoteOnOwnedTickets(ctx context.Context, winningTicketHashes []*
 				continue
 			}
 
+			// Get ticket account from first commitment address
+			// Tickets are associated with accounts via their commitment addresses
+			ticketPayKinds, ticketHash160s, _, _, _, _ :=
+				stake.TxSStxStakeOutputInfo(ticketPurchase)
+
+			// Use first commitment address to determine account
+			var ticketAddr stdaddr.StakeAddress
+			if ticketPayKinds[0] { // P2SH
+				ticketAddr, err = stdaddr.NewAddressScriptHashV0FromHash(ticketHash160s[0], w.chainParams)
+			} else { // P2PKH
+				ticketAddr, err = stdaddr.NewAddressPubKeyHashEcdsaSecp256k1V0(ticketHash160s[0], w.chainParams)
+			}
+			if err != nil {
+				log.Errorf("Failed to decode ticket commitment address for "+
+					"%v: %v", ticketHash, err)
+				continue
+			}
+
+			// Look up account for this address
+			accountNumber, err := w.manager.AddrAccount(addrmgrNs, ticketAddr)
+			if err != nil {
+				log.Errorf("Failed to find account for ticket %v: %v", ticketHash, err)
+				continue
+			}
+			accountName, err := w.manager.AccountName(addrmgrNs, accountNumber)
+			if err != nil {
+				log.Errorf("Failed to get account name for ticket %v: %v", ticketHash, err)
+				continue
+			}
+
+			// Get consolidation address for this account
+			// First get custom address if set, otherwise use auto-default (first external address)
+			var consolidationHash160 []byte
+			customHash160, err := udb.GetAccountConsolidationAddr(dbtx, accountName)
+			if err != nil {
+				log.Errorf("Failed to get consolidation address for account %s: %v",
+					accountName, err)
+				continue
+			}
+			if customHash160 != nil {
+				consolidationHash160 = customHash160
+			} else {
+				// Use auto-default: first external address (index 0)
+				consolidationHash160, err = w.getFirstExternalAddressHash160(dbtx, accountName)
+				if err != nil {
+					log.Errorf("Failed to get default consolidation address for account %s: %v",
+						accountName, err)
+					continue
+				}
+			}
+
 			ticketVoteBits := defaultVoteBits
 			// Check for and use per-ticket votebits if set for this ticket.
 			if tvb, found := w.readDBTicketVoteBits(dbtx, ticketHash); found {
@@ -736,7 +786,8 @@ func (w *Wallet) VoteOnOwnedTickets(ctx context.Context, winningTicketHashes []*
 			// Deal with consensus votes
 			vote, err := createUnsignedVote(ticketHash, ticketPurchase,
 				blockHeight, blockHash, ticketVoteBits, w.subsidyCache,
-				w.chainParams, dcp0010Active, dcp0012Active)
+				w.chainParams, dcp0010Active, dcp0012Active,
+				consolidationHash160) // Pass consolidation address for SSFee batching
 			if err != nil {
 				log.Errorf("Failed to create vote transaction for ticket "+
 					"hash %v: %v", ticketHash, err)

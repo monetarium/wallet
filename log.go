@@ -17,7 +17,6 @@ import (
 	"decred.org/dcrwallet/v5/spv"
 	"decred.org/dcrwallet/v5/ticketbuyer"
 	"decred.org/dcrwallet/v5/wallet"
-	"decred.org/dcrwallet/v5/wallet/txauthor"
 	"decred.org/dcrwallet/v5/wallet/udb"
 	"github.com/decred/dcrd/connmgr/v3"
 	"github.com/decred/dcrd/mixing/mixpool"
@@ -30,7 +29,6 @@ var log = loggers.MainLog
 func init() {
 	loader.UseLogger(loggers.LoaderLog)
 	wallet.UseLogger(loggers.WalletLog)
-	txauthor.UseLogger(loggers.WalletLog)
 	udb.UseLogger(loggers.WalletLog)
 	ticketbuyer.UseLogger(loggers.TkbyLog)
 	chain.UseLogger(loggers.SyncLog)

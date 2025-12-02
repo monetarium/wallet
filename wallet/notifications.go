@@ -185,14 +185,14 @@ func totalBalances(dbtx walletdb.ReadTx, w *Wallet, m map[uint32]dcrutil.Amount)
 	addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
 	// Get unspent outputs for active coin types
 	var unspent []*udb.Credit
-	
+
 	// Get VAR outputs (always active)
 	outputs, err := w.txStore.UnspentOutputs(dbtx, cointype.CoinTypeVAR)
 	if err != nil {
 		return err
 	}
 	unspent = append(unspent, outputs...)
-	
+
 	// Get outputs for active SKA coin types only
 	if w.chainParams != nil && w.chainParams.SKACoins != nil {
 		for coinType, config := range w.chainParams.SKACoins {

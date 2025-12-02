@@ -2248,7 +2248,7 @@ func marshalTxType(walletTxType wallet.TransactionType) pb.TransactionDetails_Tr
 	case wallet.TransactionTypeRevocation:
 		return pb.TransactionDetails_REVOCATION
 	default:
-		// SSFee and other new transaction types fall through to REGULAR for 
+		// SSFee and other new transaction types fall through to REGULAR for
 		// backward compatibility with existing RPC clients.
 		return pb.TransactionDetails_REGULAR
 	}

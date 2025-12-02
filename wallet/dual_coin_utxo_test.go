@@ -39,7 +39,7 @@ func TestDualCoinTxRules(t *testing.T) {
 	if coinType != cointype.CoinTypeVAR {
 		t.Errorf("Expected VAR coin type (0) for empty outputs, got %d", coinType)
 	}
-	
+
 	// Note: Mixed coin types in outputs are no longer allowed in transactions.
 	// All outputs must have the same coin type after SSFee implementation.
 }

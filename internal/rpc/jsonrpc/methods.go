@@ -105,115 +105,118 @@ func confirms(txHeight, curHeight int32) int32 {
 
 // the registered rpc handlers
 var handlers = map[string]handler{
-	"abandontransaction":        {fn: (*Server).abandonTransaction},
-	"accountaddressindex":       {fn: (*Server).accountAddressIndex},
-	"accountsyncaddressindex":   {fn: (*Server).accountSyncAddressIndex},
-	"accountunlocked":           {fn: (*Server).accountUnlocked},
-	"addmultisigaddress":        {fn: (*Server).addMultiSigAddress},
-	"addtransaction":            {fn: (*Server).addTransaction},
-	"auditreuse":                {fn: (*Server).auditReuse},
-	"consolidate":               {fn: (*Server).consolidate},
-	"createmultisig":            {fn: (*Server).createMultiSig},
-	"createnewaccount":          {fn: (*Server).createNewAccount},
-	"createauthorizedemission":  {fn: (*Server).createAuthorizedEmission},
-	"createrawtransaction":      {fn: (*Server).createRawTransaction},
-	"generateemissionkey":       {fn: (*Server).generateEmissionKey},
-	"importemissionkey":         {fn: (*Server).importEmissionKey},
-	"createsignature":           {fn: (*Server).createSignature},
-	"debuglevel":                {fn: (*Server).debugLevel},
-	"disapprovepercent":         {fn: (*Server).disapprovePercent},
-	"discoverusage":             {fn: (*Server).discoverUsage},
-	"dumpprivkey":               {fn: (*Server).dumpPrivKey},
-	"fundrawtransaction":        {fn: (*Server).fundRawTransaction},
-	"getaccount":                {fn: (*Server).getAccount},
-	"getaccountaddress":         {fn: (*Server).getAccountAddress},
-	"getaddressesbyaccount":     {fn: (*Server).getAddressesByAccount},
-	"getbalance":                {fn: (*Server).getBalance},
-	"getcoinbalance":            {fn: (*Server).getCoinBalance},
-	"getbestblock":              {fn: (*Server).getBestBlock},
-	"getbestblockhash":          {fn: (*Server).getBestBlockHash},
-	"getblockcount":             {fn: (*Server).getBlockCount},
-	"getblockhash":              {fn: (*Server).getBlockHash},
-	"getblockheader":            {fn: (*Server).getBlockHeader},
-	"getblock":                  {fn: (*Server).getBlock},
-	"getcoinjoinsbyacct":        {fn: (*Server).getcoinjoinsbyacct},
-	"getcurrentnet":             {fn: (*Server).getCurrentNet},
-	"getinfo":                   {fn: (*Server).getInfo},
-	"getmasterpubkey":           {fn: (*Server).getMasterPubkey},
-	"getmultisigoutinfo":        {fn: (*Server).getMultisigOutInfo},
-	"getnewaddress":             {fn: (*Server).getNewAddress},
-	"getpeerinfo":               {fn: (*Server).getPeerInfo},
-	"getrawchangeaddress":       {fn: (*Server).getRawChangeAddress},
-	"getreceivedbyaccount":      {fn: (*Server).getReceivedByAccount},
-	"getreceivedbyaddress":      {fn: (*Server).getReceivedByAddress},
-	"getstakeinfo":              {fn: (*Server).getStakeInfo},
-	"gettickets":                {fn: (*Server).getTickets},
-	"gettransaction":            {fn: (*Server).getTransaction},
-	"gettxout":                  {fn: (*Server).getTxOut},
-	"getunconfirmedbalance":     {fn: (*Server).getUnconfirmedBalance},
-	"getvotechoices":            {fn: (*Server).getVoteChoices},
-	"getwalletfee":              {fn: (*Server).getWalletFee},
-	"help":                      {fn: (*Server).help},
-	"getcfilterv2":              {fn: (*Server).getCFilterV2},
-	"importcfiltersv2":          {fn: (*Server).importCFiltersV2},
-	"importprivkey":             {fn: (*Server).importPrivKey},
-	"importpubkey":              {fn: (*Server).importPubKey},
-	"importscript":              {fn: (*Server).importScript},
-	"importxpub":                {fn: (*Server).importXpub},
-	"listaccounts":              {fn: (*Server).listAccounts},
-	"listaddresstransactions":   {fn: (*Server).listAddressTransactions},
-	"listcointypes":             {fn: (*Server).listCoinTypes},
-	"listalltransactions":       {fn: (*Server).listAllTransactions},
-	"listlockunspent":           {fn: (*Server).listLockUnspent},
-	"listreceivedbyaccount":     {fn: (*Server).listReceivedByAccount},
-	"listreceivedbyaddress":     {fn: (*Server).listReceivedByAddress},
-	"listsinceblock":            {fn: (*Server).listSinceBlock},
-	"listtransactions":          {fn: (*Server).listTransactions},
-	"listunspent":               {fn: (*Server).listUnspent},
-	"lockaccount":               {fn: (*Server).lockAccount},
-	"lockunspent":               {fn: (*Server).lockUnspent},
-	"mixaccount":                {fn: (*Server).mixAccount},
-	"mixoutput":                 {fn: (*Server).mixOutput},
-	"purchaseticket":            {fn: (*Server).purchaseTicket},
-	"processunmanagedticket":    {fn: (*Server).processUnmanagedTicket},
-	"redeemmultisigout":         {fn: (*Server).redeemMultiSigOut},
-	"redeemmultisigouts":        {fn: (*Server).redeemMultiSigOuts},
-	"renameaccount":             {fn: (*Server).renameAccount},
-	"rescanwallet":              {fn: (*Server).rescanWallet},
-	"sendfrom":                  {fn: (*Server).sendFrom},
-	"sendfromtreasury":          {fn: (*Server).sendFromTreasury},
-	"sendmany":                  {fn: (*Server).sendMany},
-	"sendrawtransaction":        {fn: (*Server).sendRawTransaction},
-	"sendtoaddress":             {fn: (*Server).sendToAddress},
-	"sendtomultisig":            {fn: (*Server).sendToMultiSig},
-	"sendtotreasury":            {fn: (*Server).sendToTreasury},
-	"sendtoburn":                {fn: (*Server).sendToBurn},
-	"setaccountpassphrase":      {fn: (*Server).setAccountPassphrase},
-	"setdisapprovepercent":      {fn: (*Server).setDisapprovePercent},
-	"settreasurypolicy":         {fn: (*Server).setTreasuryPolicy},
-	"settspendpolicy":           {fn: (*Server).setTSpendPolicy},
-	"settxfee":                  {fn: (*Server).setTxFee},
-	"setvotechoice":             {fn: (*Server).setVoteChoice},
-	"signmessage":               {fn: (*Server).signMessage},
-	"signrawtransaction":        {fn: (*Server).signRawTransaction},
-	"signrawtransactions":       {fn: (*Server).signRawTransactions},
-	"spendoutputs":              {fn: (*Server).spendOutputs},
-	"sweepaccount":              {fn: (*Server).sweepAccount},
-	"syncstatus":                {fn: (*Server).syncStatus},
-	"ticketinfo":                {fn: (*Server).ticketInfo},
-	"treasurypolicy":            {fn: (*Server).treasuryPolicy},
-	"tspendpolicy":              {fn: (*Server).tspendPolicy},
-	"unlockaccount":             {fn: (*Server).unlockAccount},
-	"validateaddress":           {fn: (*Server).validateAddress},
-	"validatepredcp0005cf":      {fn: (*Server).validatePreDCP0005CF},
-	"verifymessage":             {fn: (*Server).verifyMessage},
-	"version":                   {fn: (*Server).version},
-	"walletinfo":                {fn: (*Server).walletInfo},
-	"walletislocked":            {fn: (*Server).walletIsLocked},
-	"walletlock":                {fn: (*Server).walletLock},
-	"walletpassphrase":          {fn: (*Server).walletPassphrase},
-	"walletpassphrasechange":    {fn: (*Server).walletPassphraseChange},
-	"walletpubpassphrasechange": {fn: (*Server).walletPubPassphraseChange},
+	"abandontransaction":               {fn: (*Server).abandonTransaction},
+	"accountaddressindex":              {fn: (*Server).accountAddressIndex},
+	"accountsyncaddressindex":          {fn: (*Server).accountSyncAddressIndex},
+	"accountunlocked":                  {fn: (*Server).accountUnlocked},
+	"addmultisigaddress":               {fn: (*Server).addMultiSigAddress},
+	"addtransaction":                   {fn: (*Server).addTransaction},
+	"auditreuse":                       {fn: (*Server).auditReuse},
+	"consolidate":                      {fn: (*Server).consolidate},
+	"createmultisig":                   {fn: (*Server).createMultiSig},
+	"createnewaccount":                 {fn: (*Server).createNewAccount},
+	"createauthorizedemission":         {fn: (*Server).createAuthorizedEmission},
+	"createrawtransaction":             {fn: (*Server).createRawTransaction},
+	"generateemissionkey":              {fn: (*Server).generateEmissionKey},
+	"importemissionkey":                {fn: (*Server).importEmissionKey},
+	"createsignature":                  {fn: (*Server).createSignature},
+	"debuglevel":                       {fn: (*Server).debugLevel},
+	"disapprovepercent":                {fn: (*Server).disapprovePercent},
+	"discoverusage":                    {fn: (*Server).discoverUsage},
+	"dumpprivkey":                      {fn: (*Server).dumpPrivKey},
+	"fundrawtransaction":               {fn: (*Server).fundRawTransaction},
+	"getaccount":                       {fn: (*Server).getAccount},
+	"getaccountaddress":                {fn: (*Server).getAccountAddress},
+	"getaddressesbyaccount":            {fn: (*Server).getAddressesByAccount},
+	"getbalance":                       {fn: (*Server).getBalance},
+	"getcoinbalance":                   {fn: (*Server).getCoinBalance},
+	"getbestblock":                     {fn: (*Server).getBestBlock},
+	"getbestblockhash":                 {fn: (*Server).getBestBlockHash},
+	"getblockcount":                    {fn: (*Server).getBlockCount},
+	"getblockhash":                     {fn: (*Server).getBlockHash},
+	"getblockheader":                   {fn: (*Server).getBlockHeader},
+	"getblock":                         {fn: (*Server).getBlock},
+	"getcoinjoinsbyacct":               {fn: (*Server).getcoinjoinsbyacct},
+	"getcurrentnet":                    {fn: (*Server).getCurrentNet},
+	"getinfo":                          {fn: (*Server).getInfo},
+	"getmasterpubkey":                  {fn: (*Server).getMasterPubkey},
+	"getmultisigoutinfo":               {fn: (*Server).getMultisigOutInfo},
+	"getnewaddress":                    {fn: (*Server).getNewAddress},
+	"getpeerinfo":                      {fn: (*Server).getPeerInfo},
+	"getrawchangeaddress":              {fn: (*Server).getRawChangeAddress},
+	"getreceivedbyaccount":             {fn: (*Server).getReceivedByAccount},
+	"getreceivedbyaddress":             {fn: (*Server).getReceivedByAddress},
+	"getstakeinfo":                     {fn: (*Server).getStakeInfo},
+	"gettickets":                       {fn: (*Server).getTickets},
+	"gettransaction":                   {fn: (*Server).getTransaction},
+	"gettxout":                         {fn: (*Server).getTxOut},
+	"getunconfirmedbalance":            {fn: (*Server).getUnconfirmedBalance},
+	"getvotechoices":                   {fn: (*Server).getVoteChoices},
+	"getvotefeeconsolidationaddress":   {fn: (*Server).getVoteFeeConsolidationAddress},
+	"getwalletfee":                     {fn: (*Server).getWalletFee},
+	"clearvotefeeconsolidationaddress": {fn: (*Server).clearVoteFeeConsolidationAddress},
+	"help":                             {fn: (*Server).help},
+	"getcfilterv2":                     {fn: (*Server).getCFilterV2},
+	"importcfiltersv2":                 {fn: (*Server).importCFiltersV2},
+	"importprivkey":                    {fn: (*Server).importPrivKey},
+	"importpubkey":                     {fn: (*Server).importPubKey},
+	"importscript":                     {fn: (*Server).importScript},
+	"importxpub":                       {fn: (*Server).importXpub},
+	"listaccounts":                     {fn: (*Server).listAccounts},
+	"listaddresstransactions":          {fn: (*Server).listAddressTransactions},
+	"listcointypes":                    {fn: (*Server).listCoinTypes},
+	"listalltransactions":              {fn: (*Server).listAllTransactions},
+	"listlockunspent":                  {fn: (*Server).listLockUnspent},
+	"listreceivedbyaccount":            {fn: (*Server).listReceivedByAccount},
+	"listreceivedbyaddress":            {fn: (*Server).listReceivedByAddress},
+	"listsinceblock":                   {fn: (*Server).listSinceBlock},
+	"listtransactions":                 {fn: (*Server).listTransactions},
+	"listunspent":                      {fn: (*Server).listUnspent},
+	"lockaccount":                      {fn: (*Server).lockAccount},
+	"lockunspent":                      {fn: (*Server).lockUnspent},
+	"mixaccount":                       {fn: (*Server).mixAccount},
+	"mixoutput":                        {fn: (*Server).mixOutput},
+	"purchaseticket":                   {fn: (*Server).purchaseTicket},
+	"processunmanagedticket":           {fn: (*Server).processUnmanagedTicket},
+	"redeemmultisigout":                {fn: (*Server).redeemMultiSigOut},
+	"redeemmultisigouts":               {fn: (*Server).redeemMultiSigOuts},
+	"renameaccount":                    {fn: (*Server).renameAccount},
+	"rescanwallet":                     {fn: (*Server).rescanWallet},
+	"sendfrom":                         {fn: (*Server).sendFrom},
+	"sendfromtreasury":                 {fn: (*Server).sendFromTreasury},
+	"sendmany":                         {fn: (*Server).sendMany},
+	"sendrawtransaction":               {fn: (*Server).sendRawTransaction},
+	"sendtoaddress":                    {fn: (*Server).sendToAddress},
+	"sendtomultisig":                   {fn: (*Server).sendToMultiSig},
+	"sendtotreasury":                   {fn: (*Server).sendToTreasury},
+	"sendtoburn":                       {fn: (*Server).sendToBurn},
+	"setaccountpassphrase":             {fn: (*Server).setAccountPassphrase},
+	"setdisapprovepercent":             {fn: (*Server).setDisapprovePercent},
+	"settreasurypolicy":                {fn: (*Server).setTreasuryPolicy},
+	"settspendpolicy":                  {fn: (*Server).setTSpendPolicy},
+	"settxfee":                         {fn: (*Server).setTxFee},
+	"setvotechoice":                    {fn: (*Server).setVoteChoice},
+	"setvotefeeconsolidationaddress":   {fn: (*Server).setVoteFeeConsolidationAddress},
+	"signmessage":                      {fn: (*Server).signMessage},
+	"signrawtransaction":               {fn: (*Server).signRawTransaction},
+	"signrawtransactions":              {fn: (*Server).signRawTransactions},
+	"spendoutputs":                     {fn: (*Server).spendOutputs},
+	"sweepaccount":                     {fn: (*Server).sweepAccount},
+	"syncstatus":                       {fn: (*Server).syncStatus},
+	"ticketinfo":                       {fn: (*Server).ticketInfo},
+	"treasurypolicy":                   {fn: (*Server).treasuryPolicy},
+	"tspendpolicy":                     {fn: (*Server).tspendPolicy},
+	"unlockaccount":                    {fn: (*Server).unlockAccount},
+	"validateaddress":                  {fn: (*Server).validateAddress},
+	"validatepredcp0005cf":             {fn: (*Server).validatePreDCP0005CF},
+	"verifymessage":                    {fn: (*Server).verifyMessage},
+	"version":                          {fn: (*Server).version},
+	"walletinfo":                       {fn: (*Server).walletInfo},
+	"walletislocked":                   {fn: (*Server).walletIsLocked},
+	"walletlock":                       {fn: (*Server).walletLock},
+	"walletpassphrase":                 {fn: (*Server).walletPassphrase},
+	"walletpassphrasechange":           {fn: (*Server).walletPassphraseChange},
+	"walletpubpassphrasechange":        {fn: (*Server).walletPubPassphraseChange},
 
 	// Unimplemented/unsupported RPCs which may be found in other
 	// cryptocurrency wallets.
@@ -2701,7 +2704,7 @@ func (s *Server) getReceivedByAddress(ctx context.Context, icmd any) (any, error
 		filterCoinType = cointype.CoinType(*cmd.CoinType)
 		// Validate coin type
 		if !filterCoinType.IsValid() {
-			return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, 
+			return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter,
 				"invalid coin type %d: must be between 0 (VAR) and 255 (SKA)", *cmd.CoinType)
 		}
 	}
@@ -3126,6 +3129,73 @@ func (s *Server) getWalletFee(ctx context.Context, icmd any) (any, error) {
 		Fee:    fee.ToCoin(),
 		Source: source,
 	}, nil
+}
+
+// getVoteFeeConsolidationAddress handles the getvotefeeconsolidationaddress command.
+func (s *Server) getVoteFeeConsolidationAddress(ctx context.Context, icmd any) (any, error) {
+	cmd := icmd.(*types.GetVoteFeeConsolidationAddressCmd)
+	w, ok := s.walletLoader.LoadedWallet()
+	if !ok {
+		return nil, errUnloadedWallet
+	}
+
+	// Call wallet method to get address
+	addr, err := w.GetVoteFeeConsolidationAddress(ctx, cmd.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if this is a custom address or the default
+	hasCustom, err := w.HasCustomConsolidationAddress(ctx, cmd.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	return types.GetVoteFeeConsolidationAddressResult{
+		Account:   cmd.Account,
+		Address:   addr.String(),
+		IsDefault: !hasCustom,
+	}, nil
+}
+
+// setVoteFeeConsolidationAddress handles the setvotefeeconsolidationaddress command.
+func (s *Server) setVoteFeeConsolidationAddress(ctx context.Context, icmd any) (any, error) {
+	cmd := icmd.(*types.SetVoteFeeConsolidationAddressCmd)
+	w, ok := s.walletLoader.LoadedWallet()
+	if !ok {
+		return nil, errUnloadedWallet
+	}
+
+	// Decode and validate the address
+	addr, err := decodeAddress(cmd.Address, w.ChainParams())
+	if err != nil {
+		return nil, err
+	}
+
+	// Call wallet method
+	err = w.SetVoteFeeConsolidationAddress(ctx, cmd.Account, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return "Consolidation address set successfully", nil
+}
+
+// clearVoteFeeConsolidationAddress handles the clearvotefeeconsolidationaddress command.
+func (s *Server) clearVoteFeeConsolidationAddress(ctx context.Context, icmd any) (any, error) {
+	cmd := icmd.(*types.ClearVoteFeeConsolidationAddressCmd)
+	w, ok := s.walletLoader.LoadedWallet()
+	if !ok {
+		return nil, errUnloadedWallet
+	}
+
+	// Call wallet method
+	err := w.ClearVoteFeeConsolidationAddress(ctx, cmd.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	return "Consolidation address cleared (using default)", nil
 }
 
 // These generators create the following global variables in this package:

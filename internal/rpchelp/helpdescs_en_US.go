@@ -56,6 +56,7 @@ var helpDescsEnUS = map[string]string{
 	"consolidate-inputs":    "Number of UTXOs to consolidate as inputs",
 	"consolidate-account":   "Optional: Account from which unspent outputs are picked. When no address specified, also the account used to obtain an output address.",
 	"consolidate-address":   "Optional: Address to pay.  Default is obtained via getnewaddress from the account's address pool.",
+	"consolidate-cointype":  "Optional: Coin type to consolidate (0=VAR, 1-255=SKA). Default is VAR (0).",
 	"consolidate--result0":  "Transaction hash for the consolidation transaction",
 
 	// CreateMultisigCmd help.
@@ -377,6 +378,11 @@ var helpDescsEnUS = map[string]string{
 	"getcfilterv2result-filter":    "Hex-encoded bytes of the serialized filter",
 	"getcfilterv2result-key":       "The key required to query the filter for matches against committed scripts",
 
+	// ClearVoteFeeConsolidationAddressCmd help.
+	"clearvotefeeconsolidationaddress--synopsis": "Clear the custom consolidation address for vote fee (SSFee) payments, reverting to the default first external address (index 0).",
+	"clearvotefeeconsolidationaddress-account":   "The account name or number",
+	"clearvotefeeconsolidationaddress--result0":  "Success message confirming the consolidation address was cleared",
+
 	// SyncStatusCmd help.
 	"syncstatus--synopsis": "Returns information about this wallet's synchronization to the network.",
 
@@ -526,6 +532,17 @@ var helpDescsEnUS = map[string]string{
 	// GetVoteChoicesResult help.
 	"getvotechoicesresult-version": "The latest stake version supported by the software and the version of the included agendas",
 	"getvotechoicesresult-choices": "The currently configured agenda vote choices, including abstaining votes",
+
+	// GetVoteFeeConsolidationAddressCmd help.
+	"getvotefeeconsolidationaddress--synopsis": "Get the consolidation address for vote fee (SSFee) payments for a specific account.\n" +
+		"Returns the custom address if set, or the default first external address (index 0) otherwise.",
+	"getvotefeeconsolidationaddress-account":  "The account name or number",
+	"getvotefeeconsolidationaddress--result0": "JSON object with consolidation address details",
+
+	// GetVoteFeeConsolidationAddressResult help.
+	"getvotefeeconsolidationaddressresult-account":   "The account name",
+	"getvotefeeconsolidationaddressresult-address":   "The consolidation address",
+	"getvotefeeconsolidationaddressresult-isdefault": "True if using the default address (first external), false if custom address is set",
 
 	// GetWalletFeeCmd help.
 	"getwalletfee--synopsis": "Get currently set transaction fee for the wallet",
@@ -927,6 +944,13 @@ var helpDescsEnUS = map[string]string{
 	"setvotechoice-agendaid":   "The ID for the agenda to modify",
 	"setvotechoice-choiceid":   "The ID for the choice to choose",
 	"setvotechoice-tickethash": "The hash of the ticket to set choices for",
+
+	// SetVoteFeeConsolidationAddressCmd help.
+	"setvotefeeconsolidationaddress--synopsis": "Set a custom consolidation address for vote fee (SSFee) payments for a specific account.\n" +
+		"This overrides the default first external address (index 0).",
+	"setvotefeeconsolidationaddress-account":  "The account name or number",
+	"setvotefeeconsolidationaddress-address":  "The consolidation address to use for SSFee payments",
+	"setvotefeeconsolidationaddress--result0": "Success message confirming the consolidation address was set",
 
 	// SignMessageCmd help.
 	"signmessage--synopsis": "Signs a message using the private key of a payment address.",

@@ -1239,7 +1239,7 @@ func existsRawUnspent(ns walletdb.ReadBucket, k []byte, chainParams *chaincfg.Pa
 	varBucket := ns.NestedReadBucket(bucketUnspentForCoinType(cointype.CoinTypeVAR))
 	if varBucket != nil {
 		v := varBucket.Get(k)
-		if v != nil && len(v) >= 36 {
+		if len(v) >= 36 {
 			credKey = make([]byte, 72)
 			copy(credKey, k[:32])
 			copy(credKey[32:68], v)
@@ -1253,7 +1253,7 @@ func existsRawUnspent(ns walletdb.ReadBucket, k []byte, chainParams *chaincfg.Pa
 		bucket := ns.NestedReadBucket(bucketUnspentForCoinType(ct))
 		if bucket != nil {
 			v := bucket.Get(k)
-			if v != nil && len(v) >= 36 {
+			if len(v) >= 36 {
 				credKey = make([]byte, 72)
 				copy(credKey, k[:32])
 				copy(credKey[32:68], v)
@@ -2657,22 +2657,23 @@ func upgradeToVersion3(ns walletdb.ReadWriteBucket, chainParams *chaincfg.Params
 }
 
 // isSSFeeTx determines if a transaction is an SSFee (Stake/Staker Fee) transaction.
-// SSFee transactions distribute non-VAR coin type fees and have:
-// - Null input (like coinbase)
-// - OP_RETURN output with "SF" or "MF" marker
+// SSFee transactions distribute coin type fees and have:
+// - Single input: either null (new UTXO creation) or real UTXO (augmented SSFee)
+// - OP_RETURN output with "SF" or "MF" marker (definitive identifier)
+//
+// There are two types of SSFee transactions:
+// 1. Null-input SSFee: Creates new UTXOs for fee distribution
+// 2. Augmented SSFee: Spends existing UTXO to consolidate fees (Phase 3)
+//
+// Both types are identified by the OP_RETURN marker containing "SF" or "MF".
 func isSSFeeTx(tx *wire.MsgTx) bool {
-	// Must have at least one input and two outputs (payment + OP_RETURN)
+	// Must have exactly one input and at least two outputs (payment + OP_RETURN)
 	if len(tx.TxIn) != 1 || len(tx.TxOut) < 2 {
 		return false
 	}
 
-	// Check for null input (same as coinbase)
-	prevOut := &tx.TxIn[0].PreviousOutPoint
-	if prevOut.Index != wire.MaxPrevOutIndex || !prevOut.Hash.IsEqual(&chainhash.Hash{}) {
-		return false
-	}
-
-	// Check for SSFee marker in OP_RETURN outputs
+	// Check for SSFee marker in OP_RETURN outputs - this is the definitive identifier
+	// Both null-input SSFee and augmented SSFee have this marker
 	return getSSFeeType(tx) != ""
 }
 
@@ -2685,7 +2686,7 @@ func getSSFeeType(tx *wire.MsgTx) string {
 		// SSFee OP_RETURN: OP_RETURN(0x6a) + OP_DATA_6(0x06) + "SF"(0x53 0x46) or "MF"(0x4D 0x46)
 		if len(script) >= 8 &&
 			script[0] == txscript.OP_RETURN && // 0x6a
-			script[1] == 0x06 {                // OP_DATA_6
+			script[1] == 0x06 { // OP_DATA_6
 
 			// Check for "SF" marker (Staker Fee)
 			if script[2] == 0x53 && script[3] == 0x46 {
