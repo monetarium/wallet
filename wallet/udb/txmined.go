@@ -3684,18 +3684,22 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 			case opNonstake:
 				isConfirmed := confirmed(minConf, height, syncHeight)
 				creditFromCoinbase := fetchRawCreditIsCoinbase(cVal)
-				matureCoinbase := (creditFromCoinbase &&
+				creditHasExpiry := fetchRawCreditHasExpiry(cVal, DBVersion)
+
+				// Outputs with expiry require maturity like coinbase.
+				// dcrd enforces CoinbaseMaturity for any output with expiry set.
+				requiresMaturity := creditFromCoinbase || creditHasExpiry
+				matureOutput := (requiresMaturity &&
 					coinbaseMatured(s.chainParams, height, syncHeight))
 
-				if (isConfirmed && !creditFromCoinbase) ||
-					matureCoinbase {
+				if (isConfirmed && !requiresMaturity) || matureOutput {
 					// Update per-coin balance
 					coinBalance.Spendable += utxoAmt
 					// Update legacy VAR balance for backward compatibility
 					if coinType == cointype.CoinTypeVAR {
 						ab.Spendable += utxoAmt
 					}
-				} else if creditFromCoinbase && !matureCoinbase {
+				} else if requiresMaturity && !matureOutput {
 					// Update per-coin balance
 					coinBalance.ImmatureCoinbaseRewards += utxoAmt
 					// Update legacy VAR balance for backward compatibility
@@ -3843,13 +3847,17 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 				// SKA transactions: emission, transfers, and SSFee MF (miner fee)
 				isConfirmed := confirmed(minConf, height, syncHeight)
 				creditFromCoinbase := fetchRawCreditIsCoinbase(cVal)
-				matureCoinbase := (creditFromCoinbase &&
+				creditHasExpiry := fetchRawCreditHasExpiry(cVal, DBVersion)
+
+				// Outputs with expiry (like SKA emissions) require maturity like coinbase.
+				// dcrd enforces CoinbaseMaturity for any output with expiry set.
+				requiresMaturity := creditFromCoinbase || creditHasExpiry
+				matureOutput := (requiresMaturity &&
 					coinbaseMatured(s.chainParams, height, syncHeight))
 
-				// SSFee MF (miner fee) outputs for SKA are treated like coinbase
-				if (isConfirmed && !creditFromCoinbase) || matureCoinbase {
+				if (isConfirmed && !requiresMaturity) || matureOutput {
 					coinBalance.Spendable += utxoAmt
-				} else if creditFromCoinbase && !matureCoinbase {
+				} else if requiresMaturity && !matureOutput {
 					coinBalance.ImmatureCoinbaseRewards += utxoAmt
 				}
 				coinBalance.Total += utxoAmt
