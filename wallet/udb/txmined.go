@@ -1457,6 +1457,11 @@ func (s *Store) AddCredit(dbtx walletdb.ReadWriteTx, rec *TxRecord, block *Block
 		pkScript := rec.MsgTx.TxOut[index].PkScript
 		k := keyCredit(&rec.Hash, index, &block.Block)
 		isCoinbase := compat.IsEitherCoinBaseTx(&rec.MsgTx)
+		// SKA emission transactions should be treated like coinbase for maturity.
+		// They create new coins from nothing and require the same maturity period.
+		if !isCoinbase && wire.IsSKAEmissionTransaction(&rec.MsgTx) {
+			isCoinbase = true
+		}
 		// SSFee MF (Miner Fee) transactions should be treated like coinbase for maturity.
 		if !isCoinbase && isSSFeeMinerTx(&rec.MsgTx) {
 			isCoinbase = true
@@ -1556,6 +1561,12 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 	scriptVersion, pkScript := rec.MsgTx.TxOut[index].Version, rec.MsgTx.TxOut[index].PkScript
 	opCode := getStakeOpCode(scriptVersion, pkScript)
 	isCoinbase := compat.IsEitherCoinBaseTx(&rec.MsgTx)
+
+	// SKA emission transactions should be treated like coinbase for maturity.
+	// They create new coins from nothing and require the same maturity period.
+	if !isCoinbase && wire.IsSKAEmissionTransaction(&rec.MsgTx) {
+		isCoinbase = true
+	}
 
 	// SSFee MF (Miner Fee) transactions should be treated like coinbase for maturity.
 	// They distribute fees to miners and need the same maturity period as regular coinbase.
