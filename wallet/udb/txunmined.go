@@ -340,14 +340,17 @@ func (s *Store) unminedTxHashes(ns walletdb.ReadBucket) ([]*chainhash.Hash, erro
 //   - Ticket purchases with a different ticket price than the passed stake
 //     difficulty
 //   - Votes that do not vote on the tip block
+//   - Regular transactions whose inputs have been double-spent on chain
+//     (e.g., after a reorg where the transaction was orphaned)
 func (s *Store) PruneUnmined(dbtx walletdb.ReadWriteTx, stakeDiff int64) ([]*chainhash.Hash, error) {
 	ns := dbtx.ReadWriteBucket(wtxmgrBucketKey)
 
 	tipHash, tipHeight := s.MainChainTip(dbtx)
 
 	type removeTx struct {
-		tx   wire.MsgTx
-		hash *chainhash.Hash
+		tx     wire.MsgTx
+		hash   *chainhash.Hash
+		reason string
 	}
 	var toRemove []*removeTx
 
@@ -360,24 +363,36 @@ func (s *Store) PruneUnmined(dbtx walletdb.ReadWriteTx, stakeDiff int64) ([]*cha
 			return nil, errors.E(errors.IO, err)
 		}
 
-		var expired, isTicketPurchase, isVote bool
+		var reason string
 		switch {
 		case tx.Expiry != wire.NoExpiryValue && tx.Expiry <= uint32(tipHeight):
-			expired = true
+			reason = "expired"
 		case stake.IsSStx(&tx):
-			isTicketPurchase = true
 			if tx.TxOut[0].Value == stakeDiff {
 				continue
 			}
+			reason = "outdated ticket purchase"
 		case stake.IsSSGen(&tx):
-			isVote = true
 			// This will never actually error
 			votedBlockHash, _ := stake.SSGenBlockVotedOn(&tx)
 			if votedBlockHash == tipHash {
 				continue
 			}
+			reason = "missed or invalid vote"
+		case stake.IsSSRtx(&tx):
+			// Revocations: check if their inputs are still valid
+			if s.hasValidInputs(ns, &tx) {
+				continue
+			}
+			reason = "orphaned revocation (inputs double-spent)"
 		default:
-			continue
+			// Regular transactions: check if any input has been double-spent
+			// on chain (spent by a mined transaction). This can happen after
+			// a reorg where the unmined tx was orphaned.
+			if s.hasValidInputs(ns, &tx) {
+				continue
+			}
+			reason = "orphaned transaction (inputs double-spent)"
 		}
 
 		txHash, err := chainhash.NewHash(k)
@@ -385,15 +400,9 @@ func (s *Store) PruneUnmined(dbtx walletdb.ReadWriteTx, stakeDiff int64) ([]*cha
 			return nil, errors.E(errors.IO, err)
 		}
 
-		if expired {
-			log.Infof("Removing expired unmined transaction %v", txHash)
-		} else if isTicketPurchase {
-			log.Infof("Removing old unmined ticket purchase %v", txHash)
-		} else if isVote {
-			log.Infof("Removing missed or invalid vote %v", txHash)
-		}
+		log.Infof("Removing %s unmined transaction %v", reason, txHash)
 
-		toRemove = append(toRemove, &removeTx{tx, txHash})
+		toRemove = append(toRemove, &removeTx{tx, txHash, reason})
 	}
 
 	removed := make([]*chainhash.Hash, 0, len(toRemove))
@@ -406,4 +415,44 @@ func (s *Store) PruneUnmined(dbtx walletdb.ReadWriteTx, stakeDiff int64) ([]*cha
 	}
 
 	return removed, nil
+}
+
+// hasValidInputs checks if all inputs of an unmined transaction are still
+// spendable. An input is valid if it either:
+// - References an unspent mined output (in the unspent bucket)
+// - References an output from another unmined transaction (in unmined credits)
+//
+// If any input references an output that has been spent by a mined transaction
+// (e.g., after a reorg), the transaction is considered orphaned and should be
+// removed.
+func (s *Store) hasValidInputs(ns walletdb.ReadBucket, tx *wire.MsgTx) bool {
+	txType := stake.DetermineTxType(tx)
+
+	for i, input := range tx.TxIn {
+		// Skip stakebases for votes (input 0 is the stakebase)
+		if i == 0 && txType == stake.TxTypeSSGen {
+			continue
+		}
+
+		prevOut := &input.PreviousOutPoint
+		k := canonicalOutPoint(&prevOut.Hash, prevOut.Index)
+
+		// Check if the previous output is an unspent mined credit
+		if existsRawUnspent(ns, k, s.chainParams) != nil {
+			continue
+		}
+
+		// Check if the previous output is from another unmined transaction
+		if existsRawUnminedCredit(ns, k, s.chainParams) != nil {
+			continue
+		}
+
+		// The input references an output that is neither unspent nor from
+		// an unmined transaction. This means the output has been spent by
+		// a mined transaction (likely after a reorg), so this unmined tx
+		// is orphaned.
+		return false
+	}
+
+	return true
 }
