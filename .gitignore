@@ -23,3 +23,8 @@ wallet/udb/*.kv
 
 # Prevent binary files in RPC directories
 internal/rpc/*/dcrwallet
+
+# Internal
+WALLET_MAINNET_SETUP.md
+dcrwallet.sample.conf
+mainnet-wallet.conf
