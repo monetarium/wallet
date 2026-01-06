@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/monetarium/wallet/wallet"
+	"github.com/monetarium/monetarium-wallet/wallet"
 )
 
 type marshalJSONFunc func() ([]byte, error)

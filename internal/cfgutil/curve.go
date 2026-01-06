@@ -11,8 +11,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/certgen"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/certgen"
 )
 
 // CurveID specifies a recognized curve through a constant value.

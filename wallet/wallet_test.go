@@ -9,8 +9,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/chaincfg"
 )
 
 func TestCoinbaseMatured(t *testing.T) {

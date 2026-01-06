@@ -8,8 +8,8 @@ package jsonrpc
 import (
 	"fmt"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/dcrjson"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/dcrjson"
 	"github.com/jrick/wsrpc/v2"
 )
 

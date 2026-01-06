@@ -5,6 +5,6 @@
 
 package main
 
-import "github.com/monetarium/wallet/internal/netparams"
+import "github.com/monetarium/monetarium-wallet/internal/netparams"
 
 var activeNet = &netparams.MainNetParams

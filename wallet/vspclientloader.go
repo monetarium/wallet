@@ -1,8 +1,8 @@
 package wallet
 
 import (
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/internal/loggers"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/internal/loggers"
 )
 
 // VSP loads or creates a package-global instance of the VSP client for a host.

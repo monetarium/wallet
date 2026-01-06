@@ -3,11 +3,11 @@ package wallet
 import (
 	"testing"
 
-	"github.com/monetarium/wallet/wallet/txauthor"
-	"github.com/monetarium/wallet/wallet/txrules"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/wallet/txauthor"
+	"github.com/monetarium/monetarium-wallet/wallet/txrules"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // TestDualCoinTxRules tests the dual-coin transaction rules and coin type detection

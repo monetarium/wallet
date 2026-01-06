@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // Helper function to create test transaction outputs as TransactionOutput structs

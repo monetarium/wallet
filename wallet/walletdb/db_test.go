@@ -10,9 +10,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
-	_ "github.com/monetarium/wallet/wallet/internal/bdb"
-	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-wallet/errors"
+	_ "github.com/monetarium/monetarium-wallet/wallet/internal/bdb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
 )
 
 // dbType is the database type name for this driver.

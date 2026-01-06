@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/monetarium/node/blockchain/stake"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/txscript"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/blockchain/stake"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/txscript"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // createMockSSFeeTx creates a mock SSFee transaction for testing

@@ -12,8 +12,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/monetarium/node/dcrjson"
-	dcrdtypes "github.com/monetarium/node/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/dcrjson"
+	dcrdtypes "github.com/monetarium/monetarium-node/rpc/jsonrpc/types"
 )
 
 // TestWalletSvrCmds tests all of the wallet server commands marshal and

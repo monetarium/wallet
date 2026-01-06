@@ -5,11 +5,11 @@
 package udb
 
 import (
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	gcs2 "github.com/monetarium/node/gcs"
-	"github.com/monetarium/node/gcs/blockcf2"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	gcs2 "github.com/monetarium/monetarium-node/gcs"
+	"github.com/monetarium/monetarium-node/gcs/blockcf2"
 )
 
 // CFilterV2 returns the saved regular compact filter v2 for a block along with

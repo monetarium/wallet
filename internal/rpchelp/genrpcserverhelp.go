@@ -13,9 +13,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/monetarium/wallet/internal/rpchelp"
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/dcrjson"
+	"github.com/monetarium/monetarium-wallet/internal/rpchelp"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/dcrjson"
 )
 
 func init() {

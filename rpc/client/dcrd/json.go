@@ -11,11 +11,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/gcs"
-	blockcf "github.com/monetarium/node/gcs/blockcf2"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/gcs"
+	blockcf "github.com/monetarium/monetarium-node/gcs/blockcf2"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 type deserializer interface {

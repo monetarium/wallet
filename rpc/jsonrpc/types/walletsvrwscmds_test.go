@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/monetarium/node/dcrjson"
+	"github.com/monetarium/monetarium-node/dcrjson"
 )
 
 // TestWalletSvrWsCmds tests all of the wallet server websocket-specific

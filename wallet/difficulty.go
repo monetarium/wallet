@@ -13,14 +13,14 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/monetarium/wallet/deployments"
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	blockchain "github.com/monetarium/node/blockchain/standalone"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/deployments"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	blockchain "github.com/monetarium/monetarium-node/blockchain/standalone"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func (w *Wallet) isTestNet3() bool {

@@ -5,10 +5,10 @@
 package wallet
 
 import (
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func mustParseHash(s string) chainhash.Hash {

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func MsgTxFromHex(hexTx string) (*wire.MsgTx, error) {

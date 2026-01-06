@@ -9,14 +9,14 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/udb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/blockchain/stake"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/txscript/stdaddr"
-	"github.com/monetarium/node/txscript/stdscript"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/udb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/blockchain/stake"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-node/txscript/stdscript"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 type VSPTicket struct {

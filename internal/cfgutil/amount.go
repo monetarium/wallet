@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/monetarium-node/dcrutil"
 )
 
 // AmountFlag embeds a dcrutil.Amount and implements the flags.Marshaler and

@@ -8,12 +8,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/internal/compat"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/hdkeychain"
-	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/internal/compat"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/hdkeychain"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
 )
 
 func TestCoinTypes(t *testing.T) {

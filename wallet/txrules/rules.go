@@ -6,13 +6,13 @@
 package txrules
 
 import (
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/txscript"
-	"github.com/monetarium/node/txscript/stdscript"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/txscript"
+	"github.com/monetarium/monetarium-node/txscript/stdscript"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // StakeSubScriptType potentially transforms the provided script type by

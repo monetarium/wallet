@@ -7,14 +7,14 @@ package chain
 import (
 	"context"
 
-	"github.com/monetarium/wallet/wallet"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/gcs"
-	"github.com/monetarium/node/mixing"
-	dcrdtypes "github.com/monetarium/node/rpc/jsonrpc/types"
-	"github.com/monetarium/node/txscript/stdaddr"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/wallet"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/gcs"
+	"github.com/monetarium/monetarium-node/mixing"
+	dcrdtypes "github.com/monetarium/monetarium-node/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-node/wire"
 	"github.com/jrick/bitset"
 )
 

@@ -8,13 +8,13 @@ import (
 	"context"
 	"sync"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/gcs"
-	"github.com/monetarium/node/mixing"
-	"github.com/monetarium/node/txscript/stdaddr"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/gcs"
+	"github.com/monetarium/monetarium-node/mixing"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // FilterProof specifies cfilterv2 data of an individual block during a

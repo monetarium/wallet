@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/dcrec/secp256k1"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/dcrec/secp256k1"
 )
 
 // TestGenerateEmissionKeyCmd tests the GenerateEmissionKeyCmd structure.

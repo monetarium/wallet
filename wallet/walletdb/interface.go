@@ -13,7 +13,7 @@ import (
 	"io"
 	"runtime/trace"
 
-	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/monetarium-wallet/errors"
 )
 
 // ReadTx represents a database transaction that can only be used for reads.  If

@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/monetarium/wallet/wallet/internal/bdb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	gcs2 "github.com/monetarium/node/gcs"
-	"github.com/monetarium/node/wire"
+	_ "github.com/monetarium/monetarium-wallet/wallet/internal/bdb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	gcs2 "github.com/monetarium/monetarium-node/gcs"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func insertMainChainHeaders(s *Store, dbtx walletdb.ReadWriteTx,

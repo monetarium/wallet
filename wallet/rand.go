@@ -4,7 +4,7 @@
 
 package wallet
 
-import "github.com/monetarium/node/crypto/rand"
+import "github.com/monetarium/monetarium-node/crypto/rand"
 
 // Shuffle cryptographically shuffles a total of n items.
 func Shuffle(n int, swap func(i, j int)) {

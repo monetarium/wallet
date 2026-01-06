@@ -32,7 +32,7 @@ import (
 	_ "decred.org/dcrwallet/v3/wallet/internal/bdb"
 	"decred.org/dcrwallet/v3/wallet/udb"
 	"decred.org/dcrwallet/v3/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/monetarium-node/chaincfg"
 )
 
 const dbname = "v24.db"

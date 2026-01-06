@@ -5,7 +5,7 @@
 
 package txsizes
 
-import "github.com/monetarium/node/wire"
+import "github.com/monetarium/monetarium-node/wire"
 
 // Worst case script and input/output size estimates.
 const (

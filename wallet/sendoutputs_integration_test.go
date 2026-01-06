@@ -7,11 +7,11 @@ package wallet
 import (
 	"testing"
 
-	"github.com/monetarium/wallet/wallet/txrules"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/wallet/txrules"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // TestSendOutputsFeeCalculation tests that SendOutputs now calculates fees correctly

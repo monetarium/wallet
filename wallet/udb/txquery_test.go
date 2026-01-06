@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 type queryState struct {

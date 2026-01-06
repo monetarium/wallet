@@ -9,10 +9,10 @@ import (
 	"os"
 	"testing"
 
-	_ "github.com/monetarium/wallet/wallet/drivers/bdb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
+	_ "github.com/monetarium/monetarium-wallet/wallet/drivers/bdb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
 )
 
 var testPrivPass = []byte("private")

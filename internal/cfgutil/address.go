@@ -6,8 +6,8 @@
 package cfgutil
 
 import (
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
 )
 
 // AddressFlag contains a stdaddr.Address and implements the flags.Marshaler and

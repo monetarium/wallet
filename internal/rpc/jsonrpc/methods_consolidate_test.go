@@ -7,8 +7,8 @@ package jsonrpc
 import (
 	"testing"
 
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/cointype"
 )
 
 // TestConsolidateCmdStructure tests the ConsolidateCmd structure and constructors

@@ -14,7 +14,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/monetarium-node/chaincfg"
 	"github.com/decred/dcrutil/hdkeychain"
 	_ "github.com/decred/dcrwallet/wallet/internal/bdb"
 	"github.com/decred/dcrwallet/wallet/udb"

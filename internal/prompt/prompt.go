@@ -17,10 +17,10 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/walletseed"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/hdkeychain"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/walletseed"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/hdkeychain"
 	"golang.org/x/term"
 )
 

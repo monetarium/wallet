@@ -19,7 +19,7 @@ package pgpwordlist
 import (
 	"strings"
 
-	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/monetarium-wallet/errors"
 )
 
 // ByteToMnemonic returns the PGP word list encoding of b when found at index.

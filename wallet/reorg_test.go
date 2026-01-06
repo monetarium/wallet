@@ -9,12 +9,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/monetarium/node/blockchain/chaingen"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/gcs/blockcf2"
-	"github.com/monetarium/node/txscript"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/blockchain/chaingen"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/gcs/blockcf2"
+	"github.com/monetarium/monetarium-node/txscript"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 type tg struct {

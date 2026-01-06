@@ -8,11 +8,11 @@ Package validate provides context-free consensus validation.
 package validate
 
 import (
-	"github.com/monetarium/wallet/errors"
-	blockchain "github.com/monetarium/node/blockchain/standalone"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/gcs"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	blockchain "github.com/monetarium/monetarium-node/blockchain/standalone"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/gcs"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 const (

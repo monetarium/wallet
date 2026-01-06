@@ -9,16 +9,16 @@ import (
 	"encoding/binary"
 	"runtime/trace"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/internal/compat"
-	"github.com/monetarium/wallet/wallet/txsizes"
-	"github.com/monetarium/wallet/wallet/udb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/hdkeychain"
-	"github.com/monetarium/node/txscript"
-	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/internal/compat"
+	"github.com/monetarium/monetarium-wallet/wallet/txsizes"
+	"github.com/monetarium/monetarium-wallet/wallet/udb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/hdkeychain"
+	"github.com/monetarium/monetarium-node/txscript"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
 )
 
 // AccountKind describes the purpose and type of a wallet account.

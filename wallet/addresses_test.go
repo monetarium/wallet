@@ -10,8 +10,8 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
 )
 
 // expectedAddr is used to house the expected return values from a managed

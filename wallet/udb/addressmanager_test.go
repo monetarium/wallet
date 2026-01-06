@@ -14,12 +14,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/hdkeychain"
-	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/hdkeychain"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
 )
 
 // testContext is used to store context information about a running test which

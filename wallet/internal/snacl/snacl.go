@@ -10,8 +10,8 @@ import (
 	"encoding/binary"
 	"runtime/debug"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/crypto/rand"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/crypto/rand"
 	"golang.org/x/crypto/nacl/secretbox"
 	"golang.org/x/crypto/scrypt"
 )

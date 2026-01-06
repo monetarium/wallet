@@ -7,7 +7,7 @@ package wallet
 import (
 	"testing"
 
-	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/monetarium-node/cointype"
 )
 
 // TestConsolidateMethodSignatures tests that the consolidate methods have correct signatures

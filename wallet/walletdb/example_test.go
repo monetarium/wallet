@@ -14,9 +14,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/monetarium/wallet/errors"
-	_ "github.com/monetarium/wallet/wallet/internal/bdb"
-	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-wallet/errors"
+	_ "github.com/monetarium/monetarium-wallet/wallet/internal/bdb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
 )
 
 // This example demonstrates creating a new database.

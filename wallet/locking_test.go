@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/monetarium-wallet/errors"
 )
 
 func TestLocking(t *testing.T) {

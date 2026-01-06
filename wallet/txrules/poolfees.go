@@ -9,9 +9,9 @@ import (
 	"math/big"
 	"sync"
 
-	blockchain "github.com/monetarium/node/blockchain/standalone"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
+	blockchain "github.com/monetarium/monetarium-node/blockchain/standalone"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
 )
 
 // ValidPoolFeeRate tests to see if a pool fee is a valid percentage from

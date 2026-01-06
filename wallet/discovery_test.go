@@ -8,7 +8,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
 )
 
 // TestDiscoveryCursorPos tests that the account cursor index is not reset

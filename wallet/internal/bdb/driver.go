@@ -8,8 +8,8 @@ package bdb
 import (
 	"fmt"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
 )
 
 const (

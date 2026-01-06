@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/crypto/rand"
-	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/crypto/rand"
+	"github.com/monetarium/monetarium-node/dcrutil"
 )
 
 func randomBytes(len int) []byte {

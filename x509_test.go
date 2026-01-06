@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/monetarium/node/crypto/rand"
+	"github.com/monetarium/monetarium-node/crypto/rand"
 )
 
 type keygen func(t *testing.T) (pub, priv any, name string)

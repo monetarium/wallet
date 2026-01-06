@@ -11,13 +11,13 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/hdkeychain"
-	dcrdtypes "github.com/monetarium/node/rpc/jsonrpc/types"
-	"github.com/monetarium/node/txscript/stdaddr"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/hdkeychain"
+	dcrdtypes "github.com/monetarium/monetarium-node/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // GetTransaction returns detailed information about a wallet transaction.

@@ -8,9 +8,9 @@ package jsonrpc
 import (
 	"testing"
 
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
 )
 
 // Note: These tests focus on functions that don't require a loaded wallet

@@ -8,11 +8,11 @@ package udb
 import (
 	"bytes"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/blockchain/stake"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/blockchain/stake"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // InsertMemPoolTx inserts a memory pool transaction record.  It also marks

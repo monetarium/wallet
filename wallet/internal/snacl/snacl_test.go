@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/monetarium-wallet/errors"
 )
 
 var (

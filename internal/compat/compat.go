@@ -1,10 +1,10 @@
 package compat
 
 import (
-	"github.com/monetarium/node/blockchain/standalone"
-	"github.com/monetarium/node/hdkeychain"
-	"github.com/monetarium/node/txscript/stdaddr"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/blockchain/standalone"
+	"github.com/monetarium/monetarium-node/hdkeychain"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func HD2Address(k *hdkeychain.ExtendedKey, params stdaddr.AddressParams) (*stdaddr.AddressPubKeyHashEcdsaSecp256k1V0, error) {

@@ -9,8 +9,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
 	bolt "go.etcd.io/bbolt"
 )
 

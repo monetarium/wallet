@@ -7,11 +7,11 @@ package wallet
 import (
 	"testing"
 
-	"github.com/monetarium/node/blockchain/stake"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/txscript"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/blockchain/stake"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/txscript"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // TestTxTransactionTypeSSFee tests that SSFee transactions are correctly identified in notifications

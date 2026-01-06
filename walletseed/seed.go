@@ -10,9 +10,9 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/pgpwordlist"
-	"github.com/monetarium/node/hdkeychain"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/pgpwordlist"
+	"github.com/monetarium/monetarium-node/hdkeychain"
 )
 
 // GenerateRandomSeed returns a new seed created from a cryptographically-secure

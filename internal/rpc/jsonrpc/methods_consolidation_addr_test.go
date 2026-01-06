@@ -7,7 +7,7 @@ package jsonrpc
 import (
 	"testing"
 
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
 )
 
 // TestGetVoteFeeConsolidationAddressCmd tests the GetVoteFeeConsolidationAddressCmd structure

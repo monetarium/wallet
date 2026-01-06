@@ -7,13 +7,13 @@ package wallet
 import (
 	"context"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/txrules"
-	"github.com/monetarium/wallet/wallet/txsizes"
-	"github.com/monetarium/wallet/wallet/udb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/txscript/stdaddr"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/txrules"
+	"github.com/monetarium/monetarium-wallet/wallet/txsizes"
+	"github.com/monetarium/monetarium-wallet/wallet/udb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // FetchP2SHMultiSigOutput fetches information regarding a wallet's P2SH

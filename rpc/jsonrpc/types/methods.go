@@ -9,8 +9,8 @@
 package types
 
 import (
-	"github.com/monetarium/node/dcrjson"
-	dcrdtypes "github.com/monetarium/node/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/dcrjson"
+	dcrdtypes "github.com/monetarium/monetarium-node/rpc/jsonrpc/types"
 )
 
 // Method describes the exact type used when registering methods with dcrjson.

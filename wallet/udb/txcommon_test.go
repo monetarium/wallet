@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/monetarium/wallet/wallet/drivers/bdb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/chaincfg"
-	gcs2 "github.com/monetarium/node/gcs"
-	"github.com/monetarium/node/gcs/blockcf2"
-	"github.com/monetarium/node/wire"
+	_ "github.com/monetarium/monetarium-wallet/wallet/drivers/bdb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	gcs2 "github.com/monetarium/monetarium-node/gcs"
+	"github.com/monetarium/monetarium-node/gcs/blockcf2"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func tempDB(t *testing.T) (db walletdb.DB, teardown func()) {

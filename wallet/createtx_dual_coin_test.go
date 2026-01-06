@@ -7,11 +7,11 @@ package wallet
 import (
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/txauthor"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/txauthor"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // TestDualCoinValidationLogic tests the dual-coin validation logic in transaction creation

@@ -7,9 +7,9 @@ package wallet
 import (
 	"testing"
 
-	"github.com/monetarium/wallet/wallet/udb"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/monetarium-wallet/wallet/udb"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
 )
 
 // TestCoinBalanceStructure tests the CoinBalance struct functionality

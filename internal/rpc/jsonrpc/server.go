@@ -19,12 +19,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/internal/loader"
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrjson"
-	dcrdtypes "github.com/monetarium/node/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/internal/loader"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrjson"
+	dcrdtypes "github.com/monetarium/monetarium-node/rpc/jsonrpc/types"
 	"github.com/gorilla/websocket"
 )
 

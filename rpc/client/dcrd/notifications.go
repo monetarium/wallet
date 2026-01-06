@@ -7,10 +7,10 @@ package dcrd
 import (
 	"encoding/json"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/mixing"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/mixing"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func unmarshalArray(j json.RawMessage, params ...any) error {

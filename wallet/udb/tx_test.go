@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/monetarium/wallet/wallet/drivers/bdb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	_ "github.com/monetarium/monetarium-wallet/wallet/drivers/bdb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 func TestInsertsCreditsDebitsRollbacks(t *testing.T) {

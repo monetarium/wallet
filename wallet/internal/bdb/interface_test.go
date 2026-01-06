@@ -22,8 +22,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
 )
 
 // errSubTestFail is used to signal that a sub test returned false.

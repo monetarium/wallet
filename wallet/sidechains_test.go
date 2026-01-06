@@ -7,9 +7,9 @@ package wallet
 import (
 	"testing"
 
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/crypto/rand"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/crypto/rand"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // genTestBlockNodes generates test block nodes.  If parent is passed, then

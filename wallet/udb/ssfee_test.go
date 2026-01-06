@@ -7,10 +7,10 @@ package udb
 import (
 	"testing"
 
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/cointype"
-	"github.com/monetarium/node/txscript"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/cointype"
+	"github.com/monetarium/monetarium-node/txscript"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 // createMockSSFeeTx creates a mock SSFee transaction for testing.

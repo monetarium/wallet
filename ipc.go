@@ -12,7 +12,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/monetarium-wallet/errors"
 )
 
 // Messages sent over a pipe are encoded using a simple binary message format:

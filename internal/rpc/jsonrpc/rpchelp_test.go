@@ -19,9 +19,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/monetarium/wallet/internal/rpchelp"
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/dcrjson"
+	"github.com/monetarium/monetarium-wallet/internal/rpchelp"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/dcrjson"
 )
 
 func serverMethods() map[string]struct{} {

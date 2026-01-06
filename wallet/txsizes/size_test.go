@@ -3,8 +3,8 @@ package txsizes_test
 import (
 	"testing"
 
-	. "github.com/monetarium/wallet/wallet/txsizes"
-	"github.com/monetarium/node/wire"
+	. "github.com/monetarium/monetarium-wallet/wallet/txsizes"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 const (

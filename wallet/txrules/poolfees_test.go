@@ -3,9 +3,9 @@ package txrules_test
 import (
 	"testing"
 
-	. "github.com/monetarium/wallet/wallet/txrules"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
+	. "github.com/monetarium/monetarium-wallet/wallet/txrules"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
 )
 
 func TestStakePoolTicketFee(t *testing.T) {

@@ -8,13 +8,13 @@ package txauthor_test
 import (
 	"testing"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/txauthor"
-	"github.com/monetarium/wallet/wallet/txrules"
-	"github.com/monetarium/wallet/wallet/txsizes"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/txauthor"
+	"github.com/monetarium/monetarium-wallet/wallet/txrules"
+	"github.com/monetarium/monetarium-wallet/wallet/txsizes"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 type AuthorTestChangeSource struct{}

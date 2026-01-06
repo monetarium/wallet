@@ -7,10 +7,10 @@ package wallet
 import (
 	"context"
 
-	"github.com/monetarium/wallet/errors"
-	"github.com/monetarium/wallet/wallet/udb"
-	"github.com/monetarium/wallet/wallet/walletdb"
-	"github.com/monetarium/node/hdkeychain"
+	"github.com/monetarium/monetarium-wallet/errors"
+	"github.com/monetarium/monetarium-wallet/wallet/udb"
+	"github.com/monetarium/monetarium-wallet/wallet/walletdb"
+	"github.com/monetarium/monetarium-node/hdkeychain"
 )
 
 // UpgradeToSLIP0044CoinType upgrades the wallet from the legacy BIP0044 coin

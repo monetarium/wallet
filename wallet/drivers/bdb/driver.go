@@ -13,4 +13,4 @@
 //	if err != nil { /* handle error */ }
 package bdb
 
-import _ "github.com/monetarium/wallet/wallet/internal/bdb" // Register bdb driver during init
+import _ "github.com/monetarium/monetarium-wallet/wallet/internal/bdb" // Register bdb driver during init

@@ -9,9 +9,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/wire"
 )
 
 type caller struct {

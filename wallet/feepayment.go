@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/monetarium/node/chaincfg/chainhash"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/crypto/rand"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/txscript/stdaddr"
-	"github.com/monetarium/node/wire"
+	"github.com/monetarium/monetarium-node/chaincfg/chainhash"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/crypto/rand"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/txscript/stdaddr"
+	"github.com/monetarium/monetarium-node/wire"
 	"github.com/decred/vspd/types/v3"
 )
 

@@ -8,11 +8,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/monetarium/wallet/rpc/client/dcrwallet"
-	"github.com/monetarium/wallet/rpc/jsonrpc/types"
-	"github.com/monetarium/node/chaincfg"
-	"github.com/monetarium/node/dcrutil"
-	"github.com/monetarium/node/rpcclient"
+	"github.com/monetarium/monetarium-wallet/rpc/client/dcrwallet"
+	"github.com/monetarium/monetarium-wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/monetarium-node/chaincfg"
+	"github.com/monetarium/monetarium-node/dcrutil"
+	"github.com/monetarium/monetarium-node/rpcclient"
 )
 
 const (

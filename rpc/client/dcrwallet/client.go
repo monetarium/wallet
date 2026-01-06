@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/monetarium-node/chaincfg"
 )
 
 // Caller provides a client interface to perform JSON-RPC remote procedure calls.
