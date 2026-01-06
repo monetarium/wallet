@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"decred.org/dcrwallet/v5/errors"
+	"github.com/monetarium/wallet/errors"
 )
 
 func TestLocking(t *testing.T) {

@@ -8,15 +8,15 @@ import (
 	"context"
 	"time"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/internal/compat"
-	"decred.org/dcrwallet/v5/wallet/txauthor"
-	"decred.org/dcrwallet/v5/wallet/udb"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/txscript/v4/stdscript"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/internal/compat"
+	"github.com/monetarium/wallet/wallet/txauthor"
+	"github.com/monetarium/wallet/wallet/udb"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/txscript/stdscript"
+	"github.com/monetarium/node/wire"
 )
 
 // OutputSelectionPolicy describes the rules for selecting an output from the

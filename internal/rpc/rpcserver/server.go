@@ -30,34 +30,34 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"decred.org/dcrwallet/v5/chain"
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/internal/cfgutil"
-	"decred.org/dcrwallet/v5/internal/loader"
-	"decred.org/dcrwallet/v5/internal/netparams"
-	"decred.org/dcrwallet/v5/p2p"
-	pb "decred.org/dcrwallet/v5/rpc/walletrpc"
-	"decred.org/dcrwallet/v5/spv"
-	"decred.org/dcrwallet/v5/ticketbuyer"
-	"decred.org/dcrwallet/v5/wallet"
-	"decred.org/dcrwallet/v5/wallet/txauthor"
-	"decred.org/dcrwallet/v5/wallet/txrules"
-	"decred.org/dcrwallet/v5/wallet/udb"
-	"decred.org/dcrwallet/v5/walletseed"
-	"github.com/decred/dcrd/addrmgr/v2"
-	"github.com/decred/dcrd/blockchain/stake/v5"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/crypto/rand"
-	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/gcs/v4"
-	"github.com/decred/dcrd/hdkeychain/v3"
-	"github.com/decred/dcrd/txscript/v4"
-	"github.com/decred/dcrd/txscript/v4/stdaddr"
-	"github.com/decred/dcrd/txscript/v4/stdscript"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/chain"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/internal/cfgutil"
+	"github.com/monetarium/wallet/internal/loader"
+	"github.com/monetarium/wallet/internal/netparams"
+	"github.com/monetarium/wallet/p2p"
+	pb "github.com/monetarium/wallet/rpc/walletrpc"
+	"github.com/monetarium/wallet/spv"
+	"github.com/monetarium/wallet/ticketbuyer"
+	"github.com/monetarium/wallet/wallet"
+	"github.com/monetarium/wallet/wallet/txauthor"
+	"github.com/monetarium/wallet/wallet/txrules"
+	"github.com/monetarium/wallet/wallet/udb"
+	"github.com/monetarium/wallet/walletseed"
+	"github.com/monetarium/node/addrmgr"
+	"github.com/monetarium/node/blockchain/stake"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/crypto/rand"
+	"github.com/monetarium/node/dcrec/secp256k1"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/gcs"
+	"github.com/monetarium/node/hdkeychain"
+	"github.com/monetarium/node/txscript"
+	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/node/txscript/stdscript"
+	"github.com/monetarium/node/wire"
 )
 
 // Public API version constants
@@ -3001,7 +3001,7 @@ func (s *loaderServer) SpvSync(req *pb.SpvSyncRequest, svr pb.WalletLoaderServic
 		}
 	}
 	addr := &net.TCPAddr{IP: net.ParseIP("::1"), Port: 0}
-	amgr := addrmgr.New(s.loader.DbDirPath(), net.LookupIP) // TODO: be mindful of tor
+	amgr := addrmgr.New(s.loader.DbDirPath()) // TODO: be mindful of tor
 	lp := p2p.NewLocalPeer(wallet.ChainParams(), addr, amgr)
 
 	ntfns := &spv.Notifications{

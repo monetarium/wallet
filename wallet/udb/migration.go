@@ -7,9 +7,9 @@ package udb
 import (
 	"context"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/v3"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg"
 )
 
 // Old package namespace bucket keys.  These are still used as of the very first

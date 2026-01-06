@@ -7,10 +7,10 @@ package jsonrpc
 import (
 	"testing"
 
-	"decred.org/dcrwallet/v5/rpc/jsonrpc/types"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/wire"
 )
 
 // TestEmissionCommandIntegration tests the integration between emission commands.

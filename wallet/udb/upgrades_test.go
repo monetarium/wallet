@@ -13,12 +13,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	_ "decred.org/dcrwallet/v5/wallet/drivers/bdb"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/wire"
+	_ "github.com/monetarium/wallet/wallet/drivers/bdb"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/wire"
 )
 
 var dbUpgradeTests = [...]struct {
@@ -337,6 +337,8 @@ func verifyV8Upgrade(ctx context.Context, t *testing.T, db walletdb.DB) {
 			if err != nil {
 				t.Error(err)
 			}
+			// After full upgrade (including dualCoinUpgrade), transactions are
+			// migrated to new format with CoinType field
 			err = readRawTxRecord(&txHash, v, &rec)
 			if err != nil {
 				t.Error(err)

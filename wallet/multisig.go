@@ -7,13 +7,13 @@ package wallet
 import (
 	"context"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet/txrules"
-	"decred.org/dcrwallet/v5/wallet/txsizes"
-	"decred.org/dcrwallet/v5/wallet/udb"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/txscript/v4/stdaddr"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet/txrules"
+	"github.com/monetarium/wallet/wallet/txsizes"
+	"github.com/monetarium/wallet/wallet/udb"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/node/wire"
 )
 
 // FetchP2SHMultiSigOutput fetches information regarding a wallet's P2SH

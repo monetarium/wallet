@@ -13,17 +13,32 @@ import (
 	"net/url"
 	"sync"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet/udb"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/txscript/v4/stdaddr"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet/udb"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/node/wire"
 	"github.com/decred/slog"
 	vspd "github.com/decred/vspd/client/v4"
+	dcrdstdaddr "github.com/decred/dcrd/txscript/v4/stdaddr"
 )
 
 type DialFunc func(ctx context.Context, network, addr string) (net.Conn, error)
+
+// vspSignAdapter wraps our SignMessage to use the original dcrd stdaddr type
+// that vspd expects. This is needed because vspd hasn't been migrated to
+// monetarium/node yet.
+func vspSignAdapter(w *Wallet) func(ctx context.Context, msg string, addr dcrdstdaddr.Address) ([]byte, error) {
+	return func(ctx context.Context, msg string, addr dcrdstdaddr.Address) ([]byte, error) {
+		// Convert dcrd's Address to our Address by parsing the string representation
+		ourAddr, err := stdaddr.DecodeAddress(addr.String(), w.chainParams)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert address: %w", err)
+		}
+		return w.SignMessage(ctx, msg, ourAddr)
+	}
+}
 
 type VSPPolicy struct {
 	MaxFee     dcrutil.Amount
@@ -75,7 +90,7 @@ func (w *Wallet) NewVSPClient(cfg VSPClientConfig, log slog.Logger, dialer DialF
 	client := &vspd.Client{
 		URL:    u.String(),
 		PubKey: pubKey,
-		Sign:   w.SignMessage,
+		Sign:   vspSignAdapter(w),
 		Log:    log,
 	}
 	client.Transport = &http.Transport{

@@ -9,10 +9,10 @@ import (
 	"os"
 	"testing"
 
-	_ "decred.org/dcrwallet/v5/wallet/drivers/bdb"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/dcrutil/v4"
+	_ "github.com/monetarium/wallet/wallet/drivers/bdb"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/dcrutil"
 )
 
 var testPrivPass = []byte("private")

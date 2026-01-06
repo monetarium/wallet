@@ -9,10 +9,10 @@ import (
 	"runtime/trace"
 	"sync"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/wire"
 )
 
 const minconf = 1

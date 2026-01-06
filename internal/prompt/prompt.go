@@ -17,10 +17,10 @@ import (
 	"time"
 	"unicode"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/walletseed"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/hdkeychain/v3"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/walletseed"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/hdkeychain"
 	"golang.org/x/term"
 )
 

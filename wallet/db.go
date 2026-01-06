@@ -7,8 +7,8 @@ package wallet
 import (
 	"io"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet/walletdb"
 )
 
 // DB represents an ACID database for a wallet.

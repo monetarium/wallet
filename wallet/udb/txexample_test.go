@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/wire"
 )
 
 func ExampleStore_Rollback(t *testing.T) {

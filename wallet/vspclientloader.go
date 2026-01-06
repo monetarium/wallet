@@ -1,8 +1,8 @@
 package wallet
 
 import (
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/internal/loggers"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/internal/loggers"
 )
 
 // VSP loads or creates a package-global instance of the VSP client for a host.

@@ -5,10 +5,10 @@
 package wallet
 
 import (
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/wire"
 )
 
 func mustParseHash(s string) chainhash.Hash {

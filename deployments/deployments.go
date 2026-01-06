@@ -7,10 +7,10 @@ package deployments
 import (
 	"context"
 
-	"decred.org/dcrwallet/v5/errors"
-	"github.com/decred/dcrd/chaincfg/v3"
-	dcrdtypes "github.com/decred/dcrd/rpc/jsonrpc/types/v4"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/node/chaincfg"
+	dcrdtypes "github.com/monetarium/node/rpc/jsonrpc/types"
+	"github.com/monetarium/node/wire"
 )
 
 // HardcodedDeployment specifies hardcoded block heights that a deployment

@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"sync"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet"
-	_ "decred.org/dcrwallet/v5/wallet/drivers/bdb" // driver loaded during init
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/dcrutil/v4"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet"
+	_ "github.com/monetarium/wallet/wallet/drivers/bdb" // driver loaded during init
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/dcrutil"
 )
 
 const (

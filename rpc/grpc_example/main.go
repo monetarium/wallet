@@ -13,12 +13,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	pb "decred.org/dcrwallet/v5/rpc/walletrpc"
+	pb "github.com/monetarium/wallet/rpc/walletrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/encoding/prototext"
 
-	"github.com/decred/dcrd/dcrutil/v4"
+	"github.com/monetarium/node/dcrutil"
 )
 
 var (

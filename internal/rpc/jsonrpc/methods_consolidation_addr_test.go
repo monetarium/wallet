@@ -7,7 +7,7 @@ package jsonrpc
 import (
 	"testing"
 
-	"decred.org/dcrwallet/v5/rpc/jsonrpc/types"
+	"github.com/monetarium/wallet/rpc/jsonrpc/types"
 )
 
 // TestGetVoteFeeConsolidationAddressCmd tests the GetVoteFeeConsolidationAddressCmd structure

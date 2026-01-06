@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/dcrec"
-	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/decred/dcrd/dcrutil/v4"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/dcrec"
+	"github.com/monetarium/node/dcrec/secp256k1"
+	"github.com/monetarium/node/dcrutil"
 )
 
 func generateKeys(params *chaincfg.Params) error {

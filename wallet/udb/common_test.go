@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"os"
 
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/v3"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg"
 )
 
 var (

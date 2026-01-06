@@ -11,8 +11,8 @@ import (
 	"io"
 	"time"
 
-	"decred.org/dcrwallet/v5/errors"
-	"github.com/decred/dcrd/certgen"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/node/certgen"
 )
 
 // CurveID specifies a recognized curve through a constant value.

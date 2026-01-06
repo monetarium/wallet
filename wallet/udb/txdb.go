@@ -12,16 +12,16 @@ import (
 	"runtime/debug"
 	"time"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/blockchain/stake/v5"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/crypto/ripemd160"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/txscript/v4"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/blockchain/stake"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/crypto/ripemd160"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/txscript"
+	"github.com/monetarium/node/wire"
 )
 
 // Naming
@@ -607,6 +607,25 @@ func readRawTxRecord(txHash *chainhash.Hash, v []byte, rec *TxRecord) error {
 	// Calculate the stake TxType from the MsgTx.
 	rec.TxType = stake.DetermineTxType(&rec.MsgTx)
 
+	return nil
+}
+
+// readRawTxRecordLegacy is like readRawTxRecord but deserializes transactions
+// using the legacy wire format (protocol version < DualCoinVersion) which
+// does not include the CoinType field in transaction outputs.
+// This is used by database upgrade functions to read old databases.
+func readRawTxRecordLegacy(txHash *chainhash.Hash, v []byte, rec *TxRecord) error {
+	if len(v) < 8 {
+		return errors.E(errors.IO, errors.Errorf("tx record len %d", len(v)))
+	}
+	rec.Hash = *txHash
+	rec.Received = time.Unix(int64(byteOrder.Uint64(v)), 0)
+	// Use legacy protocol version to deserialize without CoinType
+	err := rec.MsgTx.BtcDecode(bytes.NewReader(v[8:]), wire.DualCoinVersion-1)
+	if err != nil {
+		return errors.E(errors.IO, err)
+	}
+	rec.TxType = stake.DetermineTxType(&rec.MsgTx)
 	return nil
 }
 

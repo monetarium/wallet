@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/crypto/rand"
-	"github.com/decred/dcrd/dcrutil/v4"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/crypto/rand"
+	"github.com/monetarium/node/dcrutil"
 )
 
 func randomBytes(len int) []byte {

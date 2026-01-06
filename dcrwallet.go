@@ -18,19 +18,19 @@ import (
 	"runtime/pprof"
 	"time"
 
-	"decred.org/dcrwallet/v5/chain"
-	"decred.org/dcrwallet/v5/errors"
-	ldr "decred.org/dcrwallet/v5/internal/loader"
-	"decred.org/dcrwallet/v5/internal/loggers"
-	"decred.org/dcrwallet/v5/internal/prompt"
-	"decred.org/dcrwallet/v5/internal/rpc/rpcserver"
-	"decred.org/dcrwallet/v5/p2p"
-	"decred.org/dcrwallet/v5/spv"
-	"decred.org/dcrwallet/v5/ticketbuyer"
-	"decred.org/dcrwallet/v5/version"
-	"decred.org/dcrwallet/v5/wallet"
-	"github.com/decred/dcrd/addrmgr/v2"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/chain"
+	"github.com/monetarium/wallet/errors"
+	ldr "github.com/monetarium/wallet/internal/loader"
+	"github.com/monetarium/wallet/internal/loggers"
+	"github.com/monetarium/wallet/internal/prompt"
+	"github.com/monetarium/wallet/internal/rpc/rpcserver"
+	"github.com/monetarium/wallet/p2p"
+	"github.com/monetarium/wallet/spv"
+	"github.com/monetarium/wallet/ticketbuyer"
+	"github.com/monetarium/wallet/version"
+	"github.com/monetarium/wallet/wallet"
+	"github.com/monetarium/node/addrmgr"
+	"github.com/monetarium/node/wire"
 )
 
 func init() {
@@ -525,7 +525,7 @@ func startPromptPass(ctx context.Context, w *wallet.Wallet) []byte {
 func spvLoop(ctx context.Context, w *wallet.Wallet) {
 	addr := &net.TCPAddr{IP: net.ParseIP("::1"), Port: 0}
 	amgrDir := filepath.Join(cfg.AppDataDir.Value, w.ChainParams().Name)
-	amgr := addrmgr.New(amgrDir, cfg.lookup)
+	amgr := addrmgr.New(amgrDir)
 	for {
 		lp := p2p.NewLocalPeer(w.ChainParams(), addr, amgr)
 		lp.SetDialFunc(cfg.dial)

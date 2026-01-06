@@ -7,9 +7,9 @@ package wallet
 import (
 	"testing"
 
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/crypto/rand"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/crypto/rand"
+	"github.com/monetarium/node/wire"
 )
 
 // genTestBlockNodes generates test block nodes.  If parent is passed, then

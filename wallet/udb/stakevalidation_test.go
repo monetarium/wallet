@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	_ "decred.org/dcrwallet/v5/wallet/internal/bdb"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/dcrutil/v4"
-	gcs2 "github.com/decred/dcrd/gcs/v4"
-	"github.com/decred/dcrd/wire"
+	_ "github.com/monetarium/wallet/wallet/internal/bdb"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/dcrutil"
+	gcs2 "github.com/monetarium/node/gcs"
+	"github.com/monetarium/node/wire"
 )
 
 func insertMainChainHeaders(s *Store, dbtx walletdb.ReadWriteTx,

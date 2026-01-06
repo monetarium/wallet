@@ -8,12 +8,12 @@ import (
 	"context"
 	"testing"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/internal/compat"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/hdkeychain/v3"
-	"github.com/decred/dcrd/txscript/v4/stdaddr"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/internal/compat"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/hdkeychain"
+	"github.com/monetarium/node/txscript/stdaddr"
 )
 
 func TestCoinTypes(t *testing.T) {

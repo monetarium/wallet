@@ -5,11 +5,11 @@
 package udb
 
 import (
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	gcs2 "github.com/decred/dcrd/gcs/v4"
-	"github.com/decred/dcrd/gcs/v4/blockcf2"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	gcs2 "github.com/monetarium/node/gcs"
+	"github.com/monetarium/node/gcs/blockcf2"
 )
 
 // CFilterV2 returns the saved regular compact filter v2 for a block along with

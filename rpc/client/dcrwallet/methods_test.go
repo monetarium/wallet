@@ -9,9 +9,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"decred.org/dcrwallet/v5/rpc/jsonrpc/types"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/wire"
 )
 
 type caller struct {

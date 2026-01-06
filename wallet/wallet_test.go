@@ -9,8 +9,8 @@ import (
 	"math"
 	"testing"
 
-	"decred.org/dcrwallet/v5/errors"
-	"github.com/decred/dcrd/chaincfg/v3"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/node/chaincfg"
 )
 
 func TestCoinbaseMatured(t *testing.T) {

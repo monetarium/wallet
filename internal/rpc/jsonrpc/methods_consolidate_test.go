@@ -7,8 +7,8 @@ package jsonrpc
 import (
 	"testing"
 
-	"decred.org/dcrwallet/v5/rpc/jsonrpc/types"
-	"github.com/decred/dcrd/cointype"
+	"github.com/monetarium/wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/node/cointype"
 )
 
 // TestConsolidateCmdStructure tests the ConsolidateCmd structure and constructors

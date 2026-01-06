@@ -9,9 +9,9 @@ import (
 	"math/big"
 	"sync"
 
-	blockchain "github.com/decred/dcrd/blockchain/standalone/v2"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/dcrutil/v4"
+	blockchain "github.com/monetarium/node/blockchain/standalone"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/dcrutil"
 )
 
 // ValidPoolFeeRate tests to see if a pool fee is a valid percentage from

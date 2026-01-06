@@ -1,32 +1,10 @@
-module decred.org/dcrwallet/v5
+module github.com/monetarium/wallet
 
 go 1.23
 
 require (
 	decred.org/cspp/v2 v2.4.0
-	github.com/decred/dcrd/addrmgr/v2 v2.0.4
-	github.com/decred/dcrd/blockchain/stake/v5 v5.0.1
-	github.com/decred/dcrd/blockchain/standalone/v2 v2.2.1
-	github.com/decred/dcrd/blockchain/v5 v5.0.1
-	github.com/decred/dcrd/certgen v1.2.0
-	github.com/decred/dcrd/chaincfg/chainhash v1.0.4
-	github.com/decred/dcrd/chaincfg/v3 v3.2.1
-	github.com/decred/dcrd/cointype v1.0.0
-	github.com/decred/dcrd/connmgr/v3 v3.1.2
-	github.com/decred/dcrd/crypto/blake256 v1.1.0
-	github.com/decred/dcrd/crypto/rand v1.0.1
-	github.com/decred/dcrd/crypto/ripemd160 v1.0.2
-	github.com/decred/dcrd/dcrec v1.0.1
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
-	github.com/decred/dcrd/dcrjson/v4 v4.1.0
-	github.com/decred/dcrd/dcrutil/v4 v4.0.2
-	github.com/decred/dcrd/gcs/v4 v4.1.0
-	github.com/decred/dcrd/hdkeychain/v3 v3.1.2
-	github.com/decred/dcrd/mixing v0.5.1-0.20250319155359-2b7d311f4a81
-	github.com/decred/dcrd/rpc/jsonrpc/types/v4 v4.3.0
-	github.com/decred/dcrd/rpcclient/v8 v8.0.1
 	github.com/decred/dcrd/txscript/v4 v4.1.1
-	github.com/decred/dcrd/wire v1.7.0
 	github.com/decred/go-socks v1.1.0
 	github.com/decred/slog v1.2.0
 	github.com/decred/vspd/client/v4 v4.0.1
@@ -36,6 +14,29 @@ require (
 	github.com/jrick/bitset v1.0.0
 	github.com/jrick/logrotate v1.0.0
 	github.com/jrick/wsrpc/v2 v2.3.8
+	github.com/monetarium/node/addrmgr v1.0.3
+	github.com/monetarium/node/blockchain v1.0.3
+	github.com/monetarium/node/blockchain/stake v1.0.3
+	github.com/monetarium/node/blockchain/standalone v1.0.3
+	github.com/monetarium/node/certgen v1.0.3
+	github.com/monetarium/node/chaincfg v1.0.3
+	github.com/monetarium/node/chaincfg/chainhash v1.0.3
+	github.com/monetarium/node/cointype v1.0.3
+	github.com/monetarium/node/connmgr v1.0.3
+	github.com/monetarium/node/crypto/blake256 v1.0.3
+	github.com/monetarium/node/crypto/rand v1.0.3
+	github.com/monetarium/node/crypto/ripemd160 v1.0.3
+	github.com/monetarium/node/dcrec v1.0.3
+	github.com/monetarium/node/dcrec/secp256k1 v1.0.3
+	github.com/monetarium/node/dcrjson v1.0.3
+	github.com/monetarium/node/dcrutil v1.0.3
+	github.com/monetarium/node/gcs v1.0.3
+	github.com/monetarium/node/hdkeychain v1.0.3
+	github.com/monetarium/node/mixing v1.0.3
+	github.com/monetarium/node/rpc/jsonrpc/types v1.0.3
+	github.com/monetarium/node/rpcclient v1.0.3
+	github.com/monetarium/node/txscript v1.0.3
+	github.com/monetarium/node/wire v1.0.3
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/crypto v0.33.0
 	golang.org/x/sync v0.11.0
@@ -50,27 +51,20 @@ require (
 	github.com/companyzero/sntrup4591761 v0.0.0-20220309191932-9e0f3af2f07a // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/decred/base58 v1.0.5 // indirect
-	github.com/decred/dcrd/container/lru v1.0.0 // indirect
-	github.com/decred/dcrd/database/v3 v3.0.2 // indirect
+	github.com/decred/dcrd/chaincfg/chainhash v1.0.4 // indirect
+	github.com/decred/dcrd/crypto/blake256 v1.0.1 // indirect
+	github.com/decred/dcrd/crypto/ripemd160 v1.0.2 // indirect
+	github.com/decred/dcrd/dcrec v1.0.1 // indirect
 	github.com/decred/dcrd/dcrec/edwards/v2 v2.0.3 // indirect
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
+	github.com/decred/dcrd/wire v1.7.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
+	github.com/monetarium/node/container/lru v1.0.3 // indirect
+	github.com/monetarium/node/database v1.0.3 // indirect
+	github.com/monetarium/node/dcrec/edwards v1.0.3 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
-)
-
-// Replace with local Monetarium dcrd modules for dual-coin support
-replace (
-	github.com/decred/dcrd/blockchain/stake/v5 => ../dcrd/blockchain/stake
-	github.com/decred/dcrd/blockchain/standalone/v2 => ../dcrd/blockchain/standalone
-	github.com/decred/dcrd/blockchain/v5 => ../dcrd/blockchain
-	github.com/decred/dcrd/chaincfg/chainhash => ../dcrd/chaincfg/chainhash
-	github.com/decred/dcrd/chaincfg/v3 => ../dcrd/chaincfg
-	github.com/decred/dcrd/cointype => ../dcrd/cointype
-	github.com/decred/dcrd/dcrutil/v4 => ../dcrd/dcrutil
-	github.com/decred/dcrd/rpcclient/v8 => ../dcrd/rpcclient
-	github.com/decred/dcrd/txscript/v4 => ../dcrd/txscript
-	github.com/decred/dcrd/wire => ../dcrd/wire
 )

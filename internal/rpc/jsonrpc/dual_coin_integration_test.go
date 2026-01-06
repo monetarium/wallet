@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"decred.org/dcrwallet/v5/wallet"
-	_ "decred.org/dcrwallet/v5/wallet/drivers/bdb"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/dcrutil/v4"
+	"github.com/monetarium/wallet/wallet"
+	_ "github.com/monetarium/wallet/wallet/drivers/bdb"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/dcrutil"
 )
 
 // testWalletConfig returns a test wallet configuration

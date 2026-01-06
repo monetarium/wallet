@@ -17,19 +17,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/lru"
-	"decred.org/dcrwallet/v5/version"
-	"github.com/decred/dcrd/addrmgr/v2"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/connmgr/v3"
-	"github.com/decred/dcrd/crypto/blake256"
-	"github.com/decred/dcrd/crypto/rand"
-	"github.com/decred/dcrd/gcs/v4"
-	blockcf "github.com/decred/dcrd/gcs/v4/blockcf2"
-	"github.com/decred/dcrd/mixing"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/lru"
+	"github.com/monetarium/wallet/version"
+	"github.com/monetarium/node/addrmgr"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/connmgr"
+	"github.com/monetarium/node/crypto/blake256"
+	"github.com/monetarium/node/crypto/rand"
+	"github.com/monetarium/node/gcs"
+	blockcf "github.com/monetarium/node/gcs/blockcf2"
+	"github.com/monetarium/node/mixing"
+	"github.com/monetarium/node/wire"
 	"github.com/decred/go-socks/socks"
 	"golang.org/x/sync/errgroup"
 )
@@ -269,7 +269,7 @@ func (lp *LocalPeer) ConnectOutbound(ctx context.Context, addr string, reqSvcs w
 	}
 
 	// Create a net address with assumed services.
-	na := addrmgr.NewNetAddressIPPort(tcpAddr.IP, uint16(tcpAddr.Port), wire.SFNodeNetwork)
+	na := addrmgr.NewNetAddressFromIPPort(tcpAddr.IP, uint16(tcpAddr.Port), wire.SFNodeNetwork)
 	na.Timestamp = time.Now()
 
 	rp, err := lp.connectOutbound(ctx, id, addr, na)

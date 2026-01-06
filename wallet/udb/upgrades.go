@@ -8,19 +8,19 @@ import (
 	"context"
 	"crypto/sha256"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/internal/compat"
-	"decred.org/dcrwallet/v5/wallet/internal/snacl"
-	"decred.org/dcrwallet/v5/wallet/walletdb"
-	"github.com/decred/dcrd/blockchain/stake/v5"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/gcs/v4/blockcf2"
-	"github.com/decred/dcrd/hdkeychain/v3"
-	"github.com/decred/dcrd/txscript/v4/stdscript"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/internal/compat"
+	"github.com/monetarium/wallet/wallet/internal/snacl"
+	"github.com/monetarium/wallet/wallet/walletdb"
+	"github.com/monetarium/node/blockchain/stake"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/gcs/blockcf2"
+	"github.com/monetarium/node/hdkeychain"
+	"github.com/monetarium/node/txscript/stdscript"
+	"github.com/monetarium/node/wire"
 )
 
 // Note: all manager functions always use the latest version of the database.
@@ -575,7 +575,7 @@ func ticketBucketUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, param
 			return err
 		}
 		var rec TxRecord
-		err = readRawTxRecord(&hash, v, &rec)
+		err = readRawTxRecordLegacy(&hash, v, &rec)
 		if err != nil {
 			c.Close()
 			return err
@@ -595,7 +595,7 @@ func ticketBucketUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, param
 			return err
 		}
 		var rec TxRecord
-		err = readRawTxRecord(&hash, v, &rec)
+		err = readRawTxRecordLegacy(&hash, v, &rec)
 		if err != nil {
 			c.Close()
 			return err
@@ -672,7 +672,7 @@ func hasExpiryUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *
 
 		_, recV := existsTxRecord(txmgrBucket, &hash, &block.Block)
 		record := &TxRecord{}
-		err = readRawTxRecord(&hash, recV, record)
+		err = readRawTxRecordLegacy(&hash, recV, record)
 		if err != nil {
 			cursor.Close()
 			return err
@@ -709,7 +709,7 @@ func hasExpiryUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *
 
 		recV := existsRawUnmined(txmgrBucket, hash[:])
 		record := &TxRecord{}
-		err = readRawTxRecord(hash, recV, record)
+		err = readRawTxRecordLegacy(hash, recV, record)
 		if err != nil {
 			unminedCursor.Close()
 			return err
@@ -766,7 +766,7 @@ func hasExpiryFixedUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, par
 
 		_, recV := existsTxRecord(txmgrBucket, &hash, &block.Block)
 		record := &TxRecord{}
-		err = readRawTxRecord(&hash, recV, record)
+		err = readRawTxRecordLegacy(&hash, recV, record)
 		if err != nil {
 			cursor.Close()
 			return err
@@ -813,7 +813,7 @@ func hasExpiryFixedUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, par
 
 		recV := existsRawUnmined(txmgrBucket, hash[:])
 		record := &TxRecord{}
-		err = readRawTxRecord(hash, recV, record)
+		err = readRawTxRecordLegacy(hash, recV, record)
 		if err != nil {
 			unminedCursor.Close()
 			return err
@@ -1078,7 +1078,7 @@ func ticketCommitmentsUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, 
 	for it.next() {
 		for _, txh := range it.elem.transactions {
 			_, v := latestTxRecord(txmgrBucket, txh[:])
-			err = readRawTxRecord(&txh, v, &txrec)
+			err = readRawTxRecordLegacy(&txh, v, &txrec)
 			if err != nil {
 				return errors.E(errors.IO, err)
 			}
@@ -1100,7 +1100,7 @@ func ticketCommitmentsUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, 
 			return err
 		}
 
-		err = readRawTxRecord(&txHash, uv, &rec)
+		err = readRawTxRecordLegacy(&txHash, uv, &rec)
 		if err != nil {
 			return err
 		}
@@ -1710,8 +1710,8 @@ func birthBlockUpgrade(tx walletdb.ReadWriteTx, _ []byte, params *chaincfg.Param
 
 // dualCoinUpgrade performs an upgrade from version 26 to 27. This upgrade adds
 // support for dual-coin system by extending unmined credits to store coin type.
-// Existing unmined credits cannot be migrated (no transaction data available)
-// but will default to VAR when read for backward compatibility.
+// It also migrates all existing transaction records from the legacy wire format
+// (without CoinType) to the new format (with CoinType=VAR for all outputs).
 func dualCoinUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
 	const newVersion = 27
 
@@ -1725,9 +1725,93 @@ func dualCoinUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *c
 		return errors.E(errors.IO, "missing transaction manager bucket")
 	}
 
-	// This upgrade enables the new unmined credit format that includes coin type.
-	// New unmined credits will be created with the coin type field populated.
-	// Existing unmined credits will default to VAR when read for backward compatibility.
+	// Migrate mined transaction records from legacy to new wire format.
+	// This migration is only needed for wallets upgrading from Decred (pre-v27).
+	// New Monetarium wallets start at v29+ and skip this upgrade entirely.
+	// The migration reads transactions in legacy format (without CoinType) and
+	// rewrites them with CoinType=VAR for all outputs.
+	txRecordsBucket := txmgrBucket.NestedReadWriteBucket(bucketTxRecords)
+	if txRecordsBucket != nil {
+		migratedRecords := make(map[string][]byte)
+		err := txRecordsBucket.ForEach(func(k, v []byte) error {
+			// Read using legacy format (without CoinType)
+			var hash chainhash.Hash
+			err := readRawTxRecordHash(k, &hash)
+			if err != nil {
+				return err
+			}
+			var rec TxRecord
+			err = readRawTxRecordLegacy(&hash, v, &rec)
+			if err != nil {
+				return err
+			}
+
+			// Set CoinType to VAR for all outputs (legacy transactions are all VAR)
+			for i := range rec.MsgTx.TxOut {
+				rec.MsgTx.TxOut[i].CoinType = cointype.CoinTypeVAR
+			}
+
+			// Re-serialize in new format
+			newV, err := valueTxRecord(&rec)
+			if err != nil {
+				return err
+			}
+			migratedRecords[string(k)] = newV
+			return nil
+		})
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+
+		// Write migrated records
+		for k, v := range migratedRecords {
+			if err := txRecordsBucket.Put([]byte(k), v); err != nil {
+				return errors.E(errors.IO, err)
+			}
+		}
+	}
+
+	// Migrate unmined transaction records from legacy to new wire format
+	unminedBucket := txmgrBucket.NestedReadWriteBucket(bucketUnmined)
+	if unminedBucket != nil {
+		migratedUnmined := make(map[string][]byte)
+		err := unminedBucket.ForEach(func(k, v []byte) error {
+			// Read using legacy format
+			var hash chainhash.Hash
+			err := readRawUnminedHash(k, &hash)
+			if err != nil {
+				return err
+			}
+			var rec TxRecord
+			err = readRawTxRecordLegacy(&hash, v, &rec)
+			if err != nil {
+				return err
+			}
+
+			// Set CoinType to VAR for all outputs
+			for i := range rec.MsgTx.TxOut {
+				rec.MsgTx.TxOut[i].CoinType = cointype.CoinTypeVAR
+			}
+
+			// Re-serialize in new format
+			newV, err := valueTxRecord(&rec)
+			if err != nil {
+				return err
+			}
+			migratedUnmined[string(k)] = newV
+			return nil
+		})
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+
+		// Write migrated records
+		for k, v := range migratedUnmined {
+			if err := unminedBucket.Put([]byte(k), v); err != nil {
+				return errors.E(errors.IO, err)
+			}
+		}
+	}
 
 	// Update the database version.
 	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)

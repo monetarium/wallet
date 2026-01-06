@@ -23,14 +23,14 @@ import (
 	"fmt"
 	"os"
 
-	"decred.org/dcrwallet/v5/rpc/jsonrpc/types"
-	"decred.org/dcrwallet/v5/wallet/txauthor"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/cointype"
-	"github.com/decred/dcrd/dcrutil/v4"
-	"github.com/decred/dcrd/txscript/v4/stdaddr"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/wallet/wallet/txauthor"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/cointype"
+	"github.com/monetarium/node/dcrutil"
+	"github.com/monetarium/node/txscript/stdaddr"
+	"github.com/monetarium/node/wire"
 )
 
 // params is the global representing the chain parameters. It is assigned

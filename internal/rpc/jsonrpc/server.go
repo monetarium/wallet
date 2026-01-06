@@ -19,12 +19,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/internal/loader"
-	"decred.org/dcrwallet/v5/rpc/jsonrpc/types"
-	"github.com/decred/dcrd/chaincfg/v3"
-	"github.com/decred/dcrd/dcrjson/v4"
-	dcrdtypes "github.com/decred/dcrd/rpc/jsonrpc/types/v4"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/internal/loader"
+	"github.com/monetarium/wallet/rpc/jsonrpc/types"
+	"github.com/monetarium/node/chaincfg"
+	"github.com/monetarium/node/dcrjson"
+	dcrdtypes "github.com/monetarium/node/rpc/jsonrpc/types"
 	"github.com/gorilla/websocket"
 )
 

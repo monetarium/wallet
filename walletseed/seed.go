@@ -10,9 +10,9 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"decred.org/dcrwallet/v5/errors"
-	"decred.org/dcrwallet/v5/pgpwordlist"
-	"github.com/decred/dcrd/hdkeychain/v3"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/wallet/pgpwordlist"
+	"github.com/monetarium/node/hdkeychain"
 )
 
 // GenerateRandomSeed returns a new seed created from a cryptographically-secure

@@ -6,9 +6,9 @@
 package spv
 
 import (
-	"github.com/decred/dcrd/blockchain/stake/v5"
-	"github.com/decred/dcrd/txscript/v4/stdscript"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/node/blockchain/stake"
+	"github.com/monetarium/node/txscript/stdscript"
+	"github.com/monetarium/node/wire"
 )
 
 // rescanCheckTransaction is a helper function to rescan both stake and regular

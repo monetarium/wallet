@@ -12,7 +12,7 @@ import (
 	"net/rpc"
 
 	"decred.org/cspp/v2/solverrpc"
-	"github.com/decred/dcrd/mixing"
+	"github.com/monetarium/node/mixing"
 )
 
 func testStartedSolverWorks() error {

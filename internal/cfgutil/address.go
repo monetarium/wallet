@@ -6,8 +6,8 @@
 package cfgutil
 
 import (
-	"decred.org/dcrwallet/v5/errors"
-	"github.com/decred/dcrd/txscript/v4/stdaddr"
+	"github.com/monetarium/wallet/errors"
+	"github.com/monetarium/node/txscript/stdaddr"
 )
 
 // AddressFlag contains a stdaddr.Address and implements the flags.Marshaler and

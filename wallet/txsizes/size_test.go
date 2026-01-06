@@ -3,8 +3,8 @@ package txsizes_test
 import (
 	"testing"
 
-	. "decred.org/dcrwallet/v5/wallet/txsizes"
-	"github.com/decred/dcrd/wire"
+	. "github.com/monetarium/wallet/wallet/txsizes"
+	"github.com/monetarium/node/wire"
 )
 
 const (

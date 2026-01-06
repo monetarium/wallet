@@ -5,6 +5,6 @@
 
 package main
 
-import "decred.org/dcrwallet/v5/internal/netparams"
+import "github.com/monetarium/wallet/internal/netparams"
 
 var activeNet = &netparams.MainNetParams

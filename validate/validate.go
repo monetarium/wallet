@@ -8,11 +8,11 @@ Package validate provides context-free consensus validation.
 package validate
 
 import (
-	"decred.org/dcrwallet/v5/errors"
-	blockchain "github.com/decred/dcrd/blockchain/standalone/v2"
-	"github.com/decred/dcrd/chaincfg/chainhash"
-	"github.com/decred/dcrd/gcs/v4"
-	"github.com/decred/dcrd/wire"
+	"github.com/monetarium/wallet/errors"
+	blockchain "github.com/monetarium/node/blockchain/standalone"
+	"github.com/monetarium/node/chaincfg/chainhash"
+	"github.com/monetarium/node/gcs"
+	"github.com/monetarium/node/wire"
 )
 
 const (
