@@ -14,29 +14,29 @@ require (
 	github.com/jrick/bitset v1.0.0
 	github.com/jrick/logrotate v1.0.0
 	github.com/jrick/wsrpc/v2 v2.3.8
-	github.com/monetarium/monetarium-node/addrmgr v1.0.5
-	github.com/monetarium/monetarium-node/blockchain v1.0.5
-	github.com/monetarium/monetarium-node/blockchain/stake v1.0.5
-	github.com/monetarium/monetarium-node/blockchain/standalone v1.0.5
-	github.com/monetarium/monetarium-node/certgen v1.0.5
-	github.com/monetarium/monetarium-node/chaincfg v1.0.5
-	github.com/monetarium/monetarium-node/chaincfg/chainhash v1.0.5
-	github.com/monetarium/monetarium-node/cointype v1.0.5
-	github.com/monetarium/monetarium-node/connmgr v1.0.5
-	github.com/monetarium/monetarium-node/crypto/blake256 v1.0.5
-	github.com/monetarium/monetarium-node/crypto/rand v1.0.5
-	github.com/monetarium/monetarium-node/crypto/ripemd160 v1.0.5
-	github.com/monetarium/monetarium-node/dcrec v1.0.5
-	github.com/monetarium/monetarium-node/dcrec/secp256k1 v1.0.5
-	github.com/monetarium/monetarium-node/dcrjson v1.0.5
-	github.com/monetarium/monetarium-node/dcrutil v1.0.5
-	github.com/monetarium/monetarium-node/gcs v1.0.5
-	github.com/monetarium/monetarium-node/hdkeychain v1.0.5
-	github.com/monetarium/monetarium-node/mixing v1.0.5
-	github.com/monetarium/monetarium-node/rpc/jsonrpc/types v1.0.5
-	github.com/monetarium/monetarium-node/rpcclient v1.0.5
-	github.com/monetarium/monetarium-node/txscript v1.0.5
-	github.com/monetarium/monetarium-node/wire v1.0.5
+	github.com/monetarium/monetarium-node/addrmgr v1.0.6
+	github.com/monetarium/monetarium-node/blockchain v1.0.6
+	github.com/monetarium/monetarium-node/blockchain/stake v1.0.6
+	github.com/monetarium/monetarium-node/blockchain/standalone v1.0.6
+	github.com/monetarium/monetarium-node/certgen v1.0.6
+	github.com/monetarium/monetarium-node/chaincfg v1.0.6
+	github.com/monetarium/monetarium-node/chaincfg/chainhash v1.0.6
+	github.com/monetarium/monetarium-node/cointype v1.0.6
+	github.com/monetarium/monetarium-node/connmgr v1.0.6
+	github.com/monetarium/monetarium-node/crypto/blake256 v1.0.6
+	github.com/monetarium/monetarium-node/crypto/rand v1.0.6
+	github.com/monetarium/monetarium-node/crypto/ripemd160 v1.0.6
+	github.com/monetarium/monetarium-node/dcrec v1.0.6
+	github.com/monetarium/monetarium-node/dcrec/secp256k1 v1.0.6
+	github.com/monetarium/monetarium-node/dcrjson v1.0.6
+	github.com/monetarium/monetarium-node/dcrutil v1.0.6
+	github.com/monetarium/monetarium-node/gcs v1.0.6
+	github.com/monetarium/monetarium-node/hdkeychain v1.0.6
+	github.com/monetarium/monetarium-node/mixing v1.0.6
+	github.com/monetarium/monetarium-node/rpc/jsonrpc/types v1.0.6
+	github.com/monetarium/monetarium-node/rpcclient v1.0.6
+	github.com/monetarium/monetarium-node/txscript v1.0.6
+	github.com/monetarium/monetarium-node/wire v1.0.6
 	go.etcd.io/bbolt v1.3.11
 	golang.org/x/crypto v0.33.0
 	golang.org/x/sync v0.11.0
@@ -50,7 +50,7 @@ require (
 	github.com/agl/ed25519 v0.0.0-20170116200512-5312a6153412 // indirect
 	github.com/companyzero/sntrup4591761 v0.0.0-20220309191932-9e0f3af2f07a // indirect
 	github.com/dchest/siphash v1.2.3 // indirect
-	github.com/decred/base58 v1.0.5 // indirect
+	github.com/decred/base58 v1.0.6 // indirect
 	github.com/decred/dcrd/chaincfg/chainhash v1.0.4 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.0.1 // indirect
 	github.com/decred/dcrd/crypto/ripemd160 v1.0.2 // indirect
@@ -59,9 +59,9 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/decred/dcrd/wire v1.7.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
-	github.com/monetarium/monetarium-node/container/lru v1.0.5 // indirect
-	github.com/monetarium/monetarium-node/database v1.0.5 // indirect
-	github.com/monetarium/monetarium-node/dcrec/edwards v1.0.5 // indirect
+	github.com/monetarium/monetarium-node/container/lru v1.0.6 // indirect
+	github.com/monetarium/monetarium-node/database v1.0.6 // indirect
+	github.com/monetarium/monetarium-node/dcrec/edwards v1.0.6 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
