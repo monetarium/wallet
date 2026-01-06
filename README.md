@@ -1,21 +1,21 @@
-dcrwallet
-=========
+monetarium-wallet
+=================
 
-dcrwallet is a daemon handling Decred wallet functionality.  All interaction
+monetarium-wallet is a daemon handling Monetarium wallet functionality.  All interaction
 with the wallet is performed over RPC.
 
 Public and private keys are derived using the hierarchical
 deterministic format described by
 [BIP0032](https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki).
 Unencrypted private keys are not supported and are never written to
-disk.  dcrwallet uses the
+disk.  monetarium-wallet uses the
 `m/44'/<coin type>'/<account>'/<branch>/<address index>`
 HD path for all derived addresses, as described by
 [BIP0044](https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki).
 
-dcrwallet provides two modes of operation to connect to the Decred
+monetarium-wallet provides two modes of operation to connect to the Monetarium
 network.  The first (and default) is to communicate with a single
-trusted `dcrd` instance using JSON-RPC.  The second is a
+trusted `monetarium` instance using JSON-RPC.  The second is a
 privacy-preserving Simplified Payment Verification (SPV) mode (enabled
 with the `--spv` flag) where the wallet connects either to specified
 peers (with `--spvconnect`) or peers discovered from seeders and other
@@ -49,7 +49,7 @@ Wallet clients interact with the wallet using one of two RPC servers:
 
   2. A gRPC server
 
-     The gRPC server uses a new API built for dcrwallet, but the API is not
+     The gRPC server uses a new API built for monetarium-wallet, but the API is not
      stabilized.  This server is enabled by default and may be disabled with
      the config option `--nogrpc`.  If you don't mind applications breaking
      due to API changes, don't want to deal with issues of the JSON-RPC API, or
@@ -57,20 +57,6 @@ Wallet clients interact with the wallet using one of two RPC servers:
      use. The gRPC server is documented [here](./rpc/documentation/README.md).
 
 ## Installing and updating
-
-### Binaries (Windows/Linux/macOS)
-
-Binary releases are provided for common operating systems and architectures.
-Please note that dcrwallet is CLI only. It is included in the
-[CLI app suite](https://github.com/decred/decred-release/releases/latest).
-If you would prefer a graphical user interface (GUI) instead, consider
-downloading the GUI wallet [Decrediton](https://github.com/decred/decrediton).
-
-https://decred.org/downloads/
-
-* How to verify binaries before installing: https://docs.decred.org/advanced/verifying-binaries/
-* How to install the CLI Suite: https://docs.decred.org/wallets/cli/cli-installation/
-* How to install Decrediton: https://docs.decred.org/wallets/decrediton/decrediton-setup/
 
 ### Build from source (all platforms)
 
@@ -85,92 +71,52 @@ https://decred.org/downloads/
   NOTE: `GOROOT` and `GOPATH` must not be on the same path. It is recommended
   to add `$GOPATH/bin` to your `PATH` according to the Golang.org instructions.
 
-- **Build or Update dcrwallet**
+- **Build monetarium-wallet**
 
-  Since dcrwallet is a single Go module, it's possible to use a single command
-  to download, build, and install without needing to clone the repo. Run:
-
-  ```sh
-  $ go install decred.org/dcrwallet/v5@master
-  ```
-
-  to build the latest master branch, or:
+  Clone the repository and build:
 
   ```sh
-  $ go install decred.org/dcrwallet/v4@latest
+  $ go build -o monetarium-wallet .
   ```
 
-  for the latest released version.
-
-  Any version, branch, or tag may be appended following a `@` character after
-  the package name.  The implicit default is to build `@latest`, which is the
-  latest semantic version tag.  Building `@master` will build the latest
-  development version.  The module name, including any `/vN` suffix, must match
-  the `module` line in the `go.mod` at that version.  See `go help install`
-  for more details.
-
-  The `dcrwallet` executable will be installed to `$GOPATH/bin`.  `GOPATH`
-  defaults to `$HOME/go` (or `%USERPROFILE%\go` on Windows).
+  The `monetarium-wallet` executable will be created in the current directory.
 
 ## Getting Started
 
-dcrwallet can connect to the Decred blockchain using either [dcrd](https://github.com/decred/dcrd)
-or by running in [Simple Payment Verification (SPV)](https://docs.decred.org/wallets/spv/)
-mode. Commands should be run in `cmd.exe` or PowerShell on Windows, or any
-terminal emulator on *nix.
+monetarium-wallet can connect to the Monetarium blockchain using either monetarium (the node)
+or by running in Simple Payment Verification (SPV) mode. Commands should be run
+in `cmd.exe` or PowerShell on Windows, or any terminal emulator on *nix.
 
 - Run the following command to create a wallet:
 
 ```sh
-dcrwallet --create
+monetarium-wallet --create
 ```
 
-- To use dcrwallet in SPV mode:
+- To use monetarium-wallet in SPV mode:
 
 ```sh
-dcrwallet --spv
+monetarium-wallet --spv
 ```
 
-dcrwallet will find external full node peers. It will take a few minutes to
+monetarium-wallet will find external full node peers. It will take a few minutes to
 download the blockchain headers and filters, but it will not download full blocks.
 
-- To use dcrwallet using a localhost dcrd:
+- To use monetarium-wallet using a localhost monetarium node:
 
-You will need to install both [dcrd](https://github.com/decred/dcrd) and
-[dcrctl](https://github.com/decred/dcrctl). `dcrctl` is the client that controls
-`dcrd` and `dcrwallet` via remote procedure call (RPC).
-
-Please follow the instructions in the documentation, beginning with
-[Startup Basics](https://docs.decred.org/wallets/cli/startup-basics/)
+You will need to install both monetarium (the node) and monetarium-ctl.
+`monetarium-ctl` is the client that controls `monetarium` and `monetarium-wallet`
+via remote procedure call (RPC).
 
 ## Running Tests
 
-All tests may be run using the script `run_tests.sh`. Generally, Decred only
-supports the current and previous major versions of Go.
+All tests may be run using the script `run_tests.sh`. Generally, only
+the current and previous major versions of Go are supported.
 
 ```sh
 ./run_tests.sh
 ```
 
-## Contact
-
-If you have any further questions you can find us at:
-
-https://decred.org/community/
-
-## Issue Tracker
-
-The [integrated github issue tracker](https://github.com/decred/dcrwallet/issues)
-is used for this project.
-
-## Documentation
-
-The documentation for dcrwallet is a work-in-progress.  It is located in the
-[docs](https://github.com/decred/dcrwallet/tree/master/docs) folder.
-
-Additional documentation can be found on
-[docs.decred.org](https://docs.decred.org/wallets/cli/dcrwallet-setup/).
-
 ## License
 
-dcrwallet is licensed under the liberal ISC License.
+monetarium-wallet is licensed under the liberal ISC License.

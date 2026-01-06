@@ -115,7 +115,7 @@ func (k Kind) String() string {
 	case Protocol:
 		return "protocol violation"
 	case NoPeers:
-		return "Decred network is unreachable"
+		return "Monetarium network is unreachable"
 	case Deployment:
 		return "inactive deployment"
 	default:

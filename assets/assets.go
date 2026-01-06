@@ -12,11 +12,11 @@ func init() {
 	basepath = filepath.Dir(goFilename)
 }
 
-// Path returns the absolute filepath of a file in the dcrwallet main module,
+// Path returns the absolute filepath of a file in the monetarium-wallet main module,
 // relative to the assets package.
 //
-// For example, to access the filepath of a sample-dcrwallet.conf file from the
-// root of the main module, call Path("../sample-dcrwallet.conf").
+// For example, to access the filepath of a sample-monetarium-wallet.conf file from the
+// root of the main module, call Path("../sample-monetarium-wallet.conf").
 //
 // This function is only usable when built without -trimpath and on the host the
 // Go program was compiled on.

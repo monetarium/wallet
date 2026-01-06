@@ -2631,7 +2631,7 @@ func (w *Wallet) SignHashes(ctx context.Context, hashes [][]byte, addr stdaddr.A
 func (w *Wallet) SignMessage(ctx context.Context, msg string, addr stdaddr.Address) (sig []byte, err error) {
 	const op errors.Op = "wallet.SignMessage"
 	var buf bytes.Buffer
-	_ = wire.WriteVarString(&buf, 0, "Decred Signed Message:\n")
+	_ = wire.WriteVarString(&buf, 0, "Monetarium Signed Message:\n")
 	_ = wire.WriteVarString(&buf, 0, msg)
 	messageHash := chainhash.HashB(buf.Bytes())
 	var privKey *secp256k1.PrivateKey
@@ -2661,7 +2661,7 @@ func VerifyMessage(msg string, addr stdaddr.Address, sig []byte, params stdaddr.
 	// Validate the signature - this just shows that it was valid for any pubkey
 	// at all. Whether the pubkey matches is checked below.
 	var buf bytes.Buffer
-	_ = wire.WriteVarString(&buf, 0, "Decred Signed Message:\n")
+	_ = wire.WriteVarString(&buf, 0, "Monetarium Signed Message:\n")
 	_ = wire.WriteVarString(&buf, 0, msg)
 	expectedMessageHash := chainhash.HashB(buf.Bytes())
 	pk, wasCompressed, err := ecdsa.RecoverCompact(sig, expectedMessageHash)

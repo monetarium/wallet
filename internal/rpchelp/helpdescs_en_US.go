@@ -93,7 +93,7 @@ var helpDescsEnUS = map[string]string{
 	"createrawtransaction-amounts":        "JSON object with the destination addresses as keys and amounts as values",
 	"createrawtransaction-amounts--key":   "address",
 	"createrawtransaction-amounts--value": "n.nnn",
-	"createrawtransaction-amounts--desc":  "The destination address as the key and the amount in DCR as the value",
+	"createrawtransaction-amounts--desc":  "The destination address as the key and the amount in VAR as the value",
 	"createrawtransaction-locktime":       "Locktime value; a non-zero value will also locktime-activate the inputs",
 	"createrawtransaction-expiry":         "Expiry value; a non-zero value when the transaction expiry",
 	"createrawtransaction--result0":       "Hex-encoded bytes of the serialized transaction",
@@ -355,7 +355,7 @@ var helpDescsEnUS = map[string]string{
 	"scriptsig-hex": "Hex-encoded bytes of the script",
 
 	// Vout help.
-	"vout-value":        "The amount in DCR",
+	"vout-value":        "The amount in VAR",
 	"vout-n":            "The index of this transaction output",
 	"vout-version":      "The version of the public key script",
 	"vout-cointype":     "The coin type (0=VAR, 1-255=SKA)",
@@ -366,7 +366,7 @@ var helpDescsEnUS = map[string]string{
 	"scriptpubkeyresult-hex":       "Hex-encoded bytes of the script",
 	"scriptpubkeyresult-reqSigs":   "The number of required signatures",
 	"scriptpubkeyresult-type":      "The type of the script (e.g. 'pubkeyhash')",
-	"scriptpubkeyresult-addresses": "The Decred addresses associated with this script",
+	"scriptpubkeyresult-addresses": "The Monetarium addresses associated with this script",
 	"scriptpubkeyresult-commitamt": "The ticket commitment value if the script is for a staking commitment",
 	"scriptpubkeyresult-version":   "The script version",
 
@@ -393,7 +393,7 @@ var helpDescsEnUS = map[string]string{
 	"syncstatusresult-headersfetchprogress": "Estimated progress of the headers fetching stage of the current sync process.",
 
 	// GetCurrentNetCmd help.
-	"getcurrentnet--synopsis": "Get Decred network the wallet is connected to.",
+	"getcurrentnet--synopsis": "Get Monetarium network the wallet is connected to.",
 	"getcurrentnet--result0":  "The network identifier",
 
 	// GetInfoCmd help.
@@ -450,14 +450,14 @@ var helpDescsEnUS = map[string]string{
 	"getreceivedbyaccount--synopsis": "Returns the total amount received by addresses of some account, including spent outputs.",
 	"getreceivedbyaccount-account":   "Account name to query total received amount for",
 	"getreceivedbyaccount-minconf":   "Minimum number of block confirmations required before an output's value is included in the total",
-	"getreceivedbyaccount--result0":  "The total received amount valued in decred",
+	"getreceivedbyaccount--result0":  "The total received amount valued in Monetarium",
 
 	// GetReceivedByAddressCmd help.
 	"getreceivedbyaddress--synopsis": "Returns the total amount received by a single address, including spent outputs.",
 	"getreceivedbyaddress-address":   "Payment address which received outputs to include in total",
 	"getreceivedbyaddress-minconf":   "Minimum number of block confirmations required before an output's value is included in the total",
 	"getreceivedbyaddress-cointype":  "Coin type to filter results (0=VAR, 1-255=SKA coin types)",
-	"getreceivedbyaddress--result0":  "The total received amount valued in decred",
+	"getreceivedbyaddress--result0":  "The total received amount valued in Monetarium",
 
 	// GetStakeInfo help.
 	"getstakeinfo--synopsis": "Returns statistics about staking from the wallet.",
@@ -506,7 +506,7 @@ var helpDescsEnUS = map[string]string{
 	"gettransactiondetailsresult-involveswatchonly": "Unset",
 
 	// GetTransactionResult help.
-	"gettransactionresult-amount":          "The total amount this transaction credits to the wallet, valued in decred",
+	"gettransactionresult-amount":          "The total amount this transaction credits to the wallet, valued in Monetarium",
 	"gettransactionresult-fee":             "The total input value minus the total output value, or 0 if 'txid' is not a sent transaction",
 	"gettransactionresult-confirmations":   "The number of block confirmations of the transaction",
 	"gettransactionresult-blockhash":       "The hash of the block this transaction is mined in, or the empty string if unmined",
@@ -524,7 +524,7 @@ var helpDescsEnUS = map[string]string{
 	// GetUnconfirmedBalanceCmd help.
 	"getunconfirmedbalance--synopsis": "Calculates the unspent output value of all unmined transaction outputs for an account.",
 	"getunconfirmedbalance-account":   "The account to query the unconfirmed balance for (default=\"default\")",
-	"getunconfirmedbalance--result0":  "Total amount of all unmined unspent outputs of the account valued in decred.",
+	"getunconfirmedbalance--result0":  "Total amount of all unmined unspent outputs of the account valued in Monetarium.",
 
 	// GetVoteChoices help.
 	"getvotechoices--synopsis":  "Retrieve the currently configured default vote choices for the latest supported stake agendas",
@@ -548,7 +548,7 @@ var helpDescsEnUS = map[string]string{
 	// GetWalletFeeCmd help.
 	"getwalletfee--synopsis": "Get currently set transaction fee for the wallet",
 	"getwalletfee-cointype":  "Coin type to get fee for (0=VAR, 1-255=SKA coin types)",
-	"getwalletfee--result0":  "Current tx fee (in DCR)",
+	"getwalletfee--result0":  "Current tx fee (in VAR)",
 
 	// HelpCmd help.
 	"help--synopsis":   "Returns a list of all commands or help for a specified command.",
@@ -568,7 +568,7 @@ var helpDescsEnUS = map[string]string{
 	// GetTxOutResult help.
 	"gettxoutresult-bestblock":     "The block hash that contains the transaction output",
 	"gettxoutresult-confirmations": "The number of confirmations",
-	"gettxoutresult-value":         "The transaction amount in DCR",
+	"gettxoutresult-value":         "The transaction amount in VAR",
 	"gettxoutresult-scriptPubKey":  "The public key script used to pay coins as a JSON object",
 	"gettxoutresult-coinbase":      "Whether or not the transaction is a coinbase",
 
@@ -620,7 +620,7 @@ var helpDescsEnUS = map[string]string{
 	"inforesult-proxy":           "The proxy used by the server",
 	"inforesult-difficulty":      "The current target difficulty",
 	"inforesult-testnet":         "Whether or not server is using testnet",
-	"inforesult-relayfee":        "The minimum relay fee for non-free transactions in DCR/KB",
+	"inforesult-relayfee":        "The minimum relay fee for non-free transactions in VAR/KB",
 	"inforesult-errors":          "Any current errors",
 	"inforesult-paytxfee":        "The fee per kB of the serialized tx size used each time more fee is required for an authored transaction",
 	"inforesult-balance":         "The balance of all accounts calculated with one block confirmation",
@@ -632,9 +632,9 @@ var helpDescsEnUS = map[string]string{
 	// ListAccountsCmd help.
 	"listaccounts--synopsis":       "DEPRECATED -- Returns a JSON object of all accounts and their balances.",
 	"listaccounts-minconf":         "Minimum number of block confirmations required before an unspent output's value is included in the balance",
-	"listaccounts--result0--desc":  "JSON object with account names as keys and decred amounts as values",
+	"listaccounts--result0--desc":  "JSON object with account names as keys and Monetarium amounts as values",
 	"listaccounts--result0--key":   "The account name",
-	"listaccounts--result0--value": "The account balance valued in decred",
+	"listaccounts--result0--value": "The account balance valued in Monetarium",
 
 	// ListAddressTransactionsCmd help.
 	"listaddresstransactions--synopsis": "Returns a JSON array of objects containing verbose details for wallet transactions pertaining some addresses.",
@@ -657,7 +657,7 @@ var helpDescsEnUS = map[string]string{
 
 	// ListReceivedByAccountResult help.
 	"listreceivedbyaccountresult-account":       "The name of the account",
-	"listreceivedbyaccountresult-amount":        "Total amount received by payment addresses of the account valued in decred",
+	"listreceivedbyaccountresult-amount":        "Total amount received by payment addresses of the account valued in Monetarium",
 	"listreceivedbyaccountresult-confirmations": "Number of block confirmations of the most recent transaction relevant to the account",
 
 	// ListReceivedByAddressCmd help.
@@ -669,7 +669,7 @@ var helpDescsEnUS = map[string]string{
 	// ListReceivedByAddressResult help.
 	"listreceivedbyaddressresult-account":           "DEPRECATED -- Unset",
 	"listreceivedbyaddressresult-address":           "The payment address",
-	"listreceivedbyaddressresult-amount":            "Total amount received by the payment address valued in decred",
+	"listreceivedbyaddressresult-amount":            "Total amount received by the payment address valued in Monetarium",
 	"listreceivedbyaddressresult-confirmations":     "Number of block confirmations of the most recent transaction relevant to the address",
 	"listreceivedbyaddressresult-txids":             "Transaction hashes of all transactions involving this address",
 	"listreceivedbyaddressresult-involvesWatchonly": "Unset",
@@ -699,7 +699,7 @@ var helpDescsEnUS = map[string]string{
 	"listtransactionsresult-account":           "DEPRECATED -- Unset",
 	"listtransactionsresult-address":           "Payment address for a transaction output",
 	"listtransactionsresult-category":          `The kind of transaction: "send" for sent transactions, "immature" for immature coinbase outputs, "generate" for mature coinbase outputs, or "recv" for all other received outputs.  Note: A single output may be included multiple times under different categories`,
-	"listtransactionsresult-amount":            "The value of the transaction output valued in decred",
+	"listtransactionsresult-amount":            "The value of the transaction output valued in Monetarium",
 	"listtransactionsresult-fee":               "The total input value minus the total output value for sent transactions",
 	"listtransactionsresult-confirmations":     "The number of block confirmations of the transaction",
 	"listtransactionsresult-generated":         "Whether the transaction output is a coinbase output",
@@ -731,7 +731,7 @@ var helpDescsEnUS = map[string]string{
 	"listunspentresult-account":       "The account associated with the receiving payment address",
 	"listunspentresult-scriptPubKey":  "The output script encoded as a hexadecimal string",
 	"listunspentresult-redeemScript":  "The redeemScript if scriptPubKey is P2SH",
-	"listunspentresult-amount":        "The amount of the output valued in decred",
+	"listunspentresult-amount":        "The amount of the output valued in Monetarium",
 	"listunspentresult-confirmations": "The number of block confirmations of the transaction",
 	"listunspentresult-spendable":     "Whether the output is entirely controlled by wallet keys/scripts (false for partially controlled multisig outputs or outputs to watch-only addresses)",
 	"listunspentresult-txtype":        "The type of the transaction",
@@ -818,7 +818,7 @@ var helpDescsEnUS = map[string]string{
 		"A change output is automatically included to send extra output value back to the original account.",
 	"sendfrom-fromaccount": "Account to pick unspent outputs from",
 	"sendfrom-toaddress":   "Address to pay",
-	"sendfrom-amount":      "Amount to send to the payment address valued in decred",
+	"sendfrom-amount":      "Amount to send to the payment address valued in Monetarium",
 	"sendfrom-minconf":     "Minimum number of block confirmations required before a transaction output is eligible to be spent",
 	"sendfrom-comment":     "Unused",
 	"sendfrom-commentto":   "Unused",
@@ -829,9 +829,9 @@ var helpDescsEnUS = map[string]string{
 	"sendfromtreasury--synopsis":      "Send from treasury balance to multiple recipients.",
 	"sendfromtreasury-key":            "Politeia public key",
 	"sendfromtreasury-amounts":        "Pairs of payment addresses and the output amount to pay each",
-	"sendfromtreasury-amounts--desc":  "JSON object using payment addresses as keys and output amounts valued in decred to send to each address",
+	"sendfromtreasury-amounts--desc":  "JSON object using payment addresses as keys and output amounts valued in Monetarium to send to each address",
 	"sendfromtreasury-amounts--key":   "Address to pay",
-	"sendfromtreasury-amounts--value": "Amount to send to the payment address valued in decred",
+	"sendfromtreasury-amounts--value": "Amount to send to the payment address valued in Monetarium",
 	"sendfromtreasury--result0":       "The transaction hash of the sent transaction",
 
 	// SendManyCmd help.
@@ -839,9 +839,9 @@ var helpDescsEnUS = map[string]string{
 		"A change output is automatically included to send extra output value back to the original account.",
 	"sendmany-fromaccount":    "Account to pick unspent outputs from",
 	"sendmany-amounts":        "Pairs of payment addresses and the output amount to pay each",
-	"sendmany-amounts--desc":  "JSON object using payment addresses as keys and output amounts valued in decred to send to each address",
+	"sendmany-amounts--desc":  "JSON object using payment addresses as keys and output amounts valued in Monetarium to send to each address",
 	"sendmany-amounts--key":   "Address to pay",
-	"sendmany-amounts--value": "Amount to send to the payment address valued in decred",
+	"sendmany-amounts--value": "Amount to send to the payment address valued in Monetarium",
 	"sendmany-minconf":        "Minimum number of block confirmations required before a transaction output is eligible to be spent",
 	"sendmany-comment":        "Unused",
 	"sendmany-cointype":       "Optional coin type to send (0=VAR, 1-255=SKA)",
@@ -858,7 +858,7 @@ var helpDescsEnUS = map[string]string{
 		"Unlike sendfrom, outputs are always chosen from the default account.\n" +
 		"A change output is automatically included to send extra output value back to the original account.",
 	"sendtoaddress-address":   "Address to pay",
-	"sendtoaddress-amount":    "Amount to send to the payment address valued in decred",
+	"sendtoaddress-amount":    "Amount to send to the payment address valued in Monetarium",
 	"sendtoaddress-comment":   "Unused",
 	"sendtoaddress-commentto": "Unused",
 	"sendtoaddress-cointype":  "Optional coin type to send (0=VAR, 1-255=SKA)",
@@ -872,12 +872,12 @@ var helpDescsEnUS = map[string]string{
 	"sendtomultisig-nrequired":   "The number of signatures required to redeem outputs paid to this address",
 	"sendtomultisig-pubkeys":     "Pubkey to send to.",
 	"sendtomultisig-fromaccount": "Unused",
-	"sendtomultisig-amount":      "Amount to send to the payment address valued in decred",
+	"sendtomultisig-amount":      "Amount to send to the payment address valued in Monetarium",
 	"sendtomultisig-comment":     "Unused",
 	"sendtomultisig--result0":    "The transaction hash of the sent transaction",
 
 	// SendToTreasuryCmd help.
-	"sendtotreasury--synopsis": "Send decred to treasury",
+	"sendtotreasury--synopsis": "Send Monetarium to treasury",
 	"sendtotreasury-amount":    "Amount to send to treasury",
 	"sendtotreasury--result0":  "The transaction hash of the sent transaction",
 
@@ -920,7 +920,7 @@ var helpDescsEnUS = map[string]string{
 
 	// SetTicketMaxPrice help.
 	"setticketmaxprice--synopsis": "Set the max price user is willing to pay for a ticket.",
-	"setticketmaxprice-max":       "The max price (in dcr).",
+	"setticketmaxprice-max":       "The max price (in VAR).",
 
 	// SetTreasuryPolicyCmd help.
 	"settreasurypolicy--synopsis": "Set a voting policy for treasury spends by a particular key",
@@ -936,7 +936,7 @@ var helpDescsEnUS = map[string]string{
 
 	// SetTxFeeCmd help.
 	"settxfee--synopsis": "Modify the fee per kB of the serialized tx size used each time more fee is required for an authored transaction.",
-	"settxfee-amount":    "The new fee per kB of the serialized tx size valued in decred",
+	"settxfee-amount":    "The new fee per kB of the serialized tx size valued in Monetarium",
 	"settxfee-cointype":  "Coin type to set fee for (0=VAR, 1-255=SKA coin types)",
 	"settxfee--result0":  "The boolean 'true'",
 

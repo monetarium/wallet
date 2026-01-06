@@ -40,10 +40,10 @@ const (
 
 const (
 	defaultCAFilename              = "dcrd.cert"
-	defaultConfigFilename          = "dcrwallet.conf"
+	defaultConfigFilename          = "monetarium-wallet.conf"
 	defaultLogLevel                = "info"
 	defaultLogDirname              = "logs"
-	defaultLogFilename             = "dcrwallet.log"
+	defaultLogFilename             = "monetarium-wallet.log"
 	defaultLogSize                 = "10M"
 	defaultRPCMaxClients           = 10
 	defaultRPCMaxWebsockets        = 25
@@ -71,7 +71,7 @@ const (
 
 var (
 	dcrdDefaultCAFile         = filepath.Join(dcrutil.AppDataDir("dcrd", false), "rpc.cert")
-	defaultAppDataDir         = dcrutil.AppDataDir("dcrwallet", false)
+	defaultAppDataDir         = dcrutil.AppDataDir("monetarium-wallet", false)
 	defaultConfigFile         = filepath.Join(defaultAppDataDir, defaultConfigFilename)
 	defaultRPCKeyFile         = filepath.Join(defaultAppDataDir, "rpc.key")
 	defaultRPCCertFile        = filepath.Join(defaultAppDataDir, "rpc.cert")

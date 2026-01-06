@@ -24,7 +24,12 @@ wallet/udb/*.kv
 # Prevent binary files in RPC directories
 internal/rpc/*/dcrwallet
 
+# Binaries
+monetarium-wallet
+
 # Internal
+go.work
+go.work.sum
 WALLET_MAINNET_SETUP.md
 dcrwallet.sample.conf
 mainnet-wallet.conf
