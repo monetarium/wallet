@@ -28,12 +28,12 @@ import (
 )
 
 var (
-	walletDataDirectory = dcrutil.AppDataDir("dcrwallet", false)
+	walletDataDirectory = dcrutil.AppDataDir("monetarium-wallet", false)
 	newlineBytes        = []byte{'\n'}
 )
 
 var opts = struct {
-	TestNet            bool   `long:"testnet" description:"Use the test decred network"`
+	TestNet            bool   `long:"testnet" description:"Use the test monetarium network"`
 	RPCConnect         string `short:"c" long:"connect" description:"Hostname[:port] of wallet RPC server"`
 	RPCUsername        string `short:"u" long:"rpcuser" description:"Wallet RPC username"`
 	RPCPassword        string `short:"P" long:"rpcpass" description:"Wallet RPC password"`

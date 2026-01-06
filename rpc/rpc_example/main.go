@@ -22,7 +22,7 @@ const (
 )
 
 var (
-	certFile = filepath.Join(dcrutil.AppDataDir("dcrwallet", false), "rpc.cert")
+	certFile = filepath.Join(dcrutil.AppDataDir("monetarium-wallet", false), "rpc.cert")
 	params   = chaincfg.TestNet3Params()
 )
 

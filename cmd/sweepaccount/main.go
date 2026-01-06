@@ -31,7 +31,7 @@ import (
 
 var (
 	activeNet           = chaincfg.MainNetParams()
-	walletDataDirectory = dcrutil.AppDataDir("dcrwallet", false)
+	walletDataDirectory = dcrutil.AppDataDir("monetarium-wallet", false)
 	newlineBytes        = []byte{'\n'}
 )
 
@@ -47,8 +47,8 @@ func errContext(err error, context string) error {
 
 // Flags.
 var opts = struct {
-	TestNet               bool    `long:"testnet" description:"Use the test decred network"`
-	SimNet                bool    `long:"simnet" description:"Use the simulation decred network"`
+	TestNet               bool    `long:"testnet" description:"Use the test monetarium network"`
+	SimNet                bool    `long:"simnet" description:"Use the simulation monetarium network"`
 	RPCConnect            string  `short:"c" long:"connect" description:"Hostname[:port] of wallet RPC server"`
 	RPCUsername           string  `short:"u" long:"rpcuser" description:"Wallet RPC username"`
 	RPCPassword           string  `short:"P" long:"rpcpass" description:"Wallet RPC password"`
@@ -124,7 +124,7 @@ func init() {
 	}
 
 	if opts.TestNet && opts.SimNet {
-		fatalf("Multiple decred networks may not be used simultaneously")
+		fatalf("Multiple monetarium networks may not be used simultaneously")
 	}
 	if opts.TestNet {
 		activeNet = chaincfg.TestNet3Params()

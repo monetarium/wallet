@@ -70,7 +70,7 @@ const (
 )
 
 var (
-	dcrdDefaultCAFile         = filepath.Join(dcrutil.AppDataDir("dcrd", false), "rpc.cert")
+	dcrdDefaultCAFile         = filepath.Join(dcrutil.AppDataDir("monetarium", false), "rpc.cert")
 	defaultAppDataDir         = dcrutil.AppDataDir("monetarium-wallet", false)
 	defaultConfigFile         = filepath.Join(defaultAppDataDir, defaultConfigFilename)
 	defaultRPCKeyFile         = filepath.Join(defaultAppDataDir, "rpc.key")

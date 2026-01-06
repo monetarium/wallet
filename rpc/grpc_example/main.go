@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	certificateFile      = filepath.Join(dcrutil.AppDataDir("dcrwallet", false), "rpc.cert")
-	walletClientCertFile = "client.pem" // must be part of ~/.dcrwallet/clients.pem
+	certificateFile      = filepath.Join(dcrutil.AppDataDir("monetarium-wallet", false), "rpc.cert")
+	walletClientCertFile = "client.pem" // must be part of ~/.monetarium-wallet/clients.pem
 	walletClientKeyFile  = "client-key.pem"
 )
 
