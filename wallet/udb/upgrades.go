@@ -224,10 +224,22 @@ const (
 	// UTXO consolidation in vote transactions.
 	consolidationAddressVersion = 29
 
+	// skaBucketsVersion is the 30th version of the database. It creates
+	// buckets for SKA credit amounts (big.Int storage) and SSFee transaction
+	// markers (to avoid deserializing transactions for marker checks).
+	skaBucketsVersion = 30
+
+	// wireFormatV13Version is the 31st version of the database. It migrates
+	// all transaction records from the V12 wire format (where TxOut was serialized
+	// as [Value:8][CoinType:1][Version:2][PkScript:var]) to the V13 wire format
+	// (where TxOut is serialized as [CoinType:1][Value:8+][Version:2][PkScript:var]).
+	// This change was necessary to support variable-length SKA amounts (big.Int).
+	wireFormatV13Version = 31
+
 	// DBVersion is the latest version of the database that is understood by the
 	// program.  Databases with recorded versions higher than this will fail to
 	// open (meaning any upgrades prevent reverting to older software).
-	DBVersion = consolidationAddressVersion
+	DBVersion = wireFormatV13Version
 )
 
 // upgrades maps between old database versions and the upgrade function to
@@ -262,6 +274,8 @@ var upgrades = [...]func(walletdb.ReadWriteTx, []byte, *chaincfg.Params) error{
 	dualCoinVersion - 1:                   dualCoinUpgrade,
 	coinTypeBucketsVersion - 1:            coinTypeBucketsUpgrade,
 	consolidationAddressVersion - 1:       consolidationAddressUpgrade,
+	skaBucketsVersion - 1:                 skaBucketsUpgrade,
+	wireFormatV13Version - 1:              wireFormatV13Upgrade,
 }
 
 func lastUsedAddressIndexUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
@@ -1968,5 +1982,165 @@ func consolidationAddressUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byt
 	}
 
 	// Update the database version
+	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)
+}
+
+// skaBucketsUpgrade performs an upgrade from version 29 to 30. This upgrade
+// creates buckets for SKA credit amounts (big.Int storage that exceeds int64)
+// and SSFee transaction markers (to avoid deserializing transactions for checks).
+func skaBucketsUpgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
+	const oldVersion = 29
+	const newVersion = 30
+
+	// Assert that this function is only called on version 29 databases.
+	metadataBucket := tx.ReadWriteBucket(unifiedDBMetadata{}.rootBucketKey())
+	dbVersion, err := unifiedDBMetadata{}.getVersion(metadataBucket)
+	if err != nil {
+		return err
+	}
+	if dbVersion != oldVersion {
+		return errors.E(errors.Invalid, errors.Errorf("skaBucketsUpgrade inappropriately called"))
+	}
+
+	txmgrBucket := tx.ReadWriteBucket(wtxmgrBucketKey)
+	if txmgrBucket == nil {
+		return errors.E(errors.IO, "missing transaction manager bucket")
+	}
+
+	// Create bucket for SKA credit amounts (big.Int storage)
+	_, err = txmgrBucket.CreateBucket(bucketSKACreditAmounts)
+	if err != nil {
+		return errors.E(errors.IO, err)
+	}
+
+	// Create bucket for SSFee transaction markers
+	_, err = txmgrBucket.CreateBucket(bucketSSFeeMarkers)
+	if err != nil {
+		return errors.E(errors.IO, err)
+	}
+
+	// Update the database version
+	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)
+}
+
+// wireFormatV13Upgrade performs an upgrade from version 30 to 31. This upgrade
+// migrates all transaction records from the V12 wire format to the V13 wire format.
+// The V12 format serialized TxOut as [Value:8][CoinType:1][Version:2][PkScript:var]
+// The V13 format serializes TxOut as [CoinType:1][Value:8+][Version:2][PkScript:var]
+// This change was necessary to support variable-length SKA amounts (big.Int).
+//
+// Note: If a database went through dualCoinUpgrade after the V13 wire format was
+// introduced, transactions may already be in V13 format. This upgrade tries V12
+// first, falls back to V13 if that fails, and only re-serializes if needed.
+func wireFormatV13Upgrade(tx walletdb.ReadWriteTx, publicPassphrase []byte, params *chaincfg.Params) error {
+	const oldVersion = 30
+	const newVersion = 31
+
+	// Assert that this function is only called on version 30 databases.
+	metadataBucket := tx.ReadWriteBucket(unifiedDBMetadata{}.rootBucketKey())
+	dbVersion, err := unifiedDBMetadata{}.getVersion(metadataBucket)
+	if err != nil {
+		return err
+	}
+	if dbVersion != oldVersion {
+		return errors.E(errors.Invalid, errors.Errorf("wireFormatV13Upgrade inappropriately called"))
+	}
+
+	txmgrBucket := tx.ReadWriteBucket(wtxmgrBucketKey)
+	if txmgrBucket == nil {
+		return errors.E(errors.IO, "missing transaction manager bucket")
+	}
+
+	// Migrate mined transaction records from V12 to V13 wire format.
+	txRecordsBucket := txmgrBucket.NestedReadWriteBucket(bucketTxRecords)
+	if txRecordsBucket != nil {
+		migratedRecords := make(map[string][]byte)
+		err := txRecordsBucket.ForEach(func(k, v []byte) error {
+			var hash chainhash.Hash
+			err := readRawTxRecordHash(k, &hash)
+			if err != nil {
+				return err
+			}
+
+			// Try reading with V12 format first
+			var rec TxRecord
+			err = readRawTxRecordV12(&hash, v, &rec)
+			if err != nil {
+				// V12 decode failed, try V13 (data may already be migrated)
+				err = readRawTxRecord(&hash, v, &rec)
+				if err != nil {
+					// Both failed, skip this record (shouldn't happen)
+					return nil
+				}
+				// Already in V13 format, no migration needed
+				return nil
+			}
+
+			// Re-serialize in V13 format
+			newV, err := valueTxRecord(&rec)
+			if err != nil {
+				return err
+			}
+			migratedRecords[string(k)] = newV
+			return nil
+		})
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+
+		// Write migrated records
+		for k, v := range migratedRecords {
+			if err := txRecordsBucket.Put([]byte(k), v); err != nil {
+				return errors.E(errors.IO, err)
+			}
+		}
+	}
+
+	// Migrate unmined transaction records from V12 to V13 wire format
+	unminedBucket := txmgrBucket.NestedReadWriteBucket(bucketUnmined)
+	if unminedBucket != nil {
+		migratedUnmined := make(map[string][]byte)
+		err := unminedBucket.ForEach(func(k, v []byte) error {
+			var hash chainhash.Hash
+			err := readRawUnminedHash(k, &hash)
+			if err != nil {
+				return err
+			}
+
+			// Try reading with V12 format first
+			var rec TxRecord
+			err = readRawTxRecordV12(&hash, v, &rec)
+			if err != nil {
+				// V12 decode failed, try V13 (data may already be migrated)
+				err = readRawTxRecord(&hash, v, &rec)
+				if err != nil {
+					// Both failed, skip this record
+					return nil
+				}
+				// Already in V13 format, no migration needed
+				return nil
+			}
+
+			// Re-serialize in V13 format
+			newV, err := valueTxRecord(&rec)
+			if err != nil {
+				return err
+			}
+			migratedUnmined[string(k)] = newV
+			return nil
+		})
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+
+		// Write migrated records
+		for k, v := range migratedUnmined {
+			if err := unminedBucket.Put([]byte(k), v); err != nil {
+				return errors.E(errors.IO, err)
+			}
+		}
+	}
+
+	// Update the database version.
 	return unifiedDBMetadata{}.putVersion(metadataBucket, newVersion)
 }

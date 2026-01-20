@@ -78,6 +78,7 @@ var (
 	wtxmgrNamespaceKey   = []byte("wtxmgr")
 )
 
+
 // The assumed output script version is defined to assist with refactoring to
 // use actual script versions.
 const scriptVersionAssumed = 0
@@ -2418,6 +2419,12 @@ func (w *Wallet) TotalBalanceByCoinType(ctx context.Context, coinType cointype.C
 	// Use the efficient method that directly queries each account for the specific coin type
 	var total CoinBalance
 	total.CoinType = coinType
+	// Initialize SKA big.Int fields to zero
+	total.SKAImmatureCoinbaseRewards = cointype.Zero()
+	total.SKAImmatureStakeGeneration = cointype.Zero()
+	total.SKASpendable = cointype.Zero()
+	total.SKATotal = cointype.Zero()
+	total.SKAUnconfirmed = cointype.Zero()
 
 	err := walletdb.View(ctx, w.db, func(dbtx walletdb.ReadTx) error {
 		addrmgrNs := dbtx.ReadBucket(waddrmgrNamespaceKey)
@@ -2429,7 +2436,7 @@ func (w *Wallet) TotalBalanceByCoinType(ctx context.Context, coinType cointype.C
 				return err
 			}
 
-			// Sum up all balance fields
+			// Sum up all balance fields (int64)
 			total.ImmatureCoinbaseRewards += balance.ImmatureCoinbaseRewards
 			total.ImmatureStakeGeneration += balance.ImmatureStakeGeneration
 			total.LockedByTickets += balance.LockedByTickets
@@ -2437,6 +2444,13 @@ func (w *Wallet) TotalBalanceByCoinType(ctx context.Context, coinType cointype.C
 			total.Total += balance.Total
 			total.VotingAuthority += balance.VotingAuthority
 			total.Unconfirmed += balance.Unconfirmed
+
+			// Sum up SKA big.Int fields (for amounts that exceed int64 capacity)
+			total.SKAImmatureCoinbaseRewards = total.SKAImmatureCoinbaseRewards.Add(balance.SKAImmatureCoinbaseRewards)
+			total.SKAImmatureStakeGeneration = total.SKAImmatureStakeGeneration.Add(balance.SKAImmatureStakeGeneration)
+			total.SKASpendable = total.SKASpendable.Add(balance.SKASpendable)
+			total.SKATotal = total.SKATotal.Add(balance.SKATotal)
+			total.SKAUnconfirmed = total.SKAUnconfirmed.Add(balance.SKAUnconfirmed)
 
 			return nil
 		})
@@ -3011,6 +3025,7 @@ func recvCategory(details *udb.TxDetails, syncHeight int32, chainParams *chaincf
 	return CreditReceive
 }
 
+
 // listTransactions creates a object that may be marshalled to a response result
 // for a listtransactions RPC.
 //
@@ -3048,21 +3063,61 @@ func listTransactions(tx walletdb.ReadTx, details *udb.TxDetails, addrMgr *udb.M
 		txTypeStr = types.LTTTRegular // Intentionally mapped to Regular for RPC compatibility
 	}
 
+	// Determine coin type from transaction outputs for proper amount conversion
+	var txCoinType cointype.CoinType
+	for _, output := range details.MsgTx.TxOut {
+		if output.CoinType.IsSKA() {
+			txCoinType = output.CoinType
+			break
+		}
+	}
+	isSKA := txCoinType.IsSKA()
+
+	// Get atomsPerCoin for proper conversion (big.Int for SKA full precision)
+	var atomsPerCoin *big.Int
+	if isSKA {
+		if config, ok := net.SKACoins[txCoinType]; ok && config.AtomsPerCoin != nil {
+			atomsPerCoin = config.AtomsPerCoin
+		} else {
+			atomsPerCoin = cointype.AtomsPerSKACoin
+		}
+	}
+
 	// Fee can only be determined if every input is a debit.
+	// Use interface{} for SKA (string) vs VAR (float64)
+	var feeValue interface{}
 	var feeF64 float64
 	if len(details.Debits) == len(details.MsgTx.TxIn) {
 		var debitTotal dcrutil.Amount
+		var skaDebitTotal cointype.SKAAmount
 		for _, deb := range details.Debits {
-			debitTotal += deb.Amount
+			if isSKA {
+				// For SKA, use SKAAmount from debit record (big.Int precision)
+				skaDebitTotal = skaDebitTotal.Add(deb.SKAAmount)
+			} else {
+				debitTotal += deb.Amount
+			}
 		}
 		var outputTotal dcrutil.Amount
+		var skaOutputTotal cointype.SKAAmount
 		for _, output := range details.MsgTx.TxOut {
-			outputTotal += dcrutil.Amount(output.Value)
+			if isSKA && output.SKAValue != nil {
+				skaOutputTotal = skaOutputTotal.Add(cointype.NewSKAAmount(output.SKAValue))
+			} else {
+				outputTotal += dcrutil.Amount(output.Value)
+			}
 		}
 		// Note: The actual fee is debitTotal - outputTotal.  However,
 		// this RPC reports negative numbers for fees, so the inverse
 		// is calculated.
-		feeF64 = (outputTotal - debitTotal).ToCoin()
+		if isSKA {
+			// fee = outputs - debits (negative because debits > outputs)
+			skaFee := skaOutputTotal.Sub(skaDebitTotal)
+			feeValue = skaFee.ToDecimalString(atomsPerCoin)
+		} else {
+			feeF64 = (outputTotal - debitTotal).ToCoin()
+			feeValue = &feeF64
+		}
 	}
 
 outputs:
@@ -3094,7 +3149,19 @@ outputs:
 			}
 		}
 
-		amountF64 := dcrutil.Amount(output.Value).ToCoin()
+		// Calculate amount with proper conversion for coin type
+		// Use interface{} for SKA (string) vs VAR (float64)
+		var amountValue interface{}
+		var negAmountValue interface{}
+		if isSKA && output.SKAValue != nil {
+			skaAmount := cointype.NewSKAAmount(output.SKAValue)
+			amountValue = skaAmount.ToDecimalString(atomsPerCoin)
+			negAmountValue = skaAmount.Neg().ToDecimalString(atomsPerCoin)
+		} else {
+			amountF64 := dcrutil.Amount(output.Value).ToCoin()
+			amountValue = amountF64
+			negAmountValue = -amountF64
+		}
 		result := types.ListTransactionsResult{
 			// Fields left zeroed:
 			//   InvolvesWatchOnly
@@ -3130,14 +3197,14 @@ outputs:
 
 		if send {
 			result.Category = "send"
-			result.Amount = -amountF64
-			result.Fee = &feeF64
+			result.Amount = negAmountValue
+			result.Fee = feeValue
 			sends = append(sends, result)
 		}
 		if isCredit {
 			result.Account = accountName
 			result.Category = recvCat
-			result.Amount = amountF64
+			result.Amount = amountValue
 			result.Fee = nil
 			receives = append(receives, result)
 		}
@@ -4298,6 +4365,22 @@ func (w *Wallet) ListUnspent(ctx context.Context, minconf, maxconf int32, addres
 			// regardless of detected script type.
 			spendable = spendable && len(addrs) > 0
 
+			// Calculate amount based on coin type
+			// VAR: use float64, SKA: use string for full precision
+			var amount interface{}
+			if output.CoinType.IsSKA() {
+				// Get AtomsPerCoin for this SKA type
+				var atomsPerCoin *big.Int = cointype.AtomsPerSKACoin
+				if config, ok := w.chainParams.SKACoins[output.CoinType]; ok && config.AtomsPerCoin != nil {
+					atomsPerCoin = config.AtomsPerCoin
+				}
+				// Use SKAAmount (big.Int) for SKA coins to handle large values
+				amount = output.SKAAmount.ToDecimalString(atomsPerCoin)
+			} else {
+				// VAR: use float64
+				amount = float64(output.Amount) / cointype.AtomsPerVAR
+			}
+
 			result := &types.ListUnspentResult{
 				TxID:          output.OutPoint.Hash.String(),
 				Vout:          output.OutPoint.Index,
@@ -4306,7 +4389,7 @@ func (w *Wallet) ListUnspent(ctx context.Context, minconf, maxconf int32, addres
 				ScriptPubKey:  hex.EncodeToString(output.PkScript),
 				RedeemScript:  hex.EncodeToString(redeemScript),
 				TxType:        int(details.TxType),
-				Amount:        output.Amount.ToCoin(),
+				Amount:        amount,
 				Confirmations: int64(confs),
 				Spendable:     spendable,
 				CoinType:      uint8(output.CoinType), // Dual-coin support: include coin type

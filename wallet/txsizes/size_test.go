@@ -35,28 +35,30 @@ func TestEstimateSerializeSize(t *testing.T) {
 		ChangeScriptSize     int
 		ExpectedSizeEstimate int
 	}{
-		// Updated expected values to account for 1-byte CoinType field per output
-		0: {[]int{RedeemP2PKHSigScriptSize}, []int{}, 0, 181},
-		1: {[]int{RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, 0, 218},               // +1 for CoinType
-		2: {[]int{RedeemP2PKHSigScriptSize}, []int{}, p2pkhScriptSize, 218},                // +1 for CoinType in change
-		3: {[]int{RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, p2pkhScriptSize, 255}, // +2 for CoinType in both outputs
-		4: {[]int{RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, 0, 216},                // +1 for CoinType
-		5: {[]int{RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, p2pkhScriptSize, 253},  // +2 for CoinType
+		// Updated expected values to account for:
+		// - 1-byte CoinType field per output (V12)
+		// - 1-byte SKAValueInLen field per input witness (V13)
+		0: {[]int{RedeemP2PKHSigScriptSize}, []int{}, 0, 182},                              // +1 for SKAValueInLen
+		1: {[]int{RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, 0, 219},               // +1 CoinType, +1 SKAValueInLen
+		2: {[]int{RedeemP2PKHSigScriptSize}, []int{}, p2pkhScriptSize, 219},                // +1 CoinType in change, +1 SKAValueInLen
+		3: {[]int{RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, p2pkhScriptSize, 256}, // +2 CoinType, +1 SKAValueInLen
+		4: {[]int{RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, 0, 217},                // +1 CoinType, +1 SKAValueInLen
+		5: {[]int{RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, p2pkhScriptSize, 254},  // +2 CoinType, +1 SKAValueInLen
 
-		6:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{}, 0, 347},
-		7:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, 0, 384},               // +1 for CoinType
-		8:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{}, p2pkhScriptSize, 384},                // +1 for CoinType in change
-		9:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, p2pkhScriptSize, 421}, // +2 for CoinType
-		10: {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, 0, 382},                // +1 for CoinType
-		11: {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, p2pkhScriptSize, 419},  // +2 for CoinType
+		6:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{}, 0, 349},                              // +2 SKAValueInLen
+		7:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, 0, 386},               // +1 CoinType, +2 SKAValueInLen
+		8:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{}, p2pkhScriptSize, 386},                // +1 CoinType in change, +2 SKAValueInLen
+		9:  {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2pkhScriptSize}, p2pkhScriptSize, 423}, // +2 CoinType, +2 SKAValueInLen
+		10: {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, 0, 384},                // +1 CoinType, +2 SKAValueInLen
+		11: {[]int{RedeemP2PKHSigScriptSize, RedeemP2PKHSigScriptSize}, []int{p2shScriptSize}, p2pkhScriptSize, 421},  // +2 CoinType, +2 SKAValueInLen
 
 		// 0xfd is discriminant for 16-bit compact ints, compact int
 		// total size increases from 1 byte to 3.
-		12: {[]int{RedeemP2PKHSigScriptSize}, makeInts(p2pkhScriptSize, 0xfc), 0, 9505},               // +252 (0xfc outputs * 1 byte CoinType each)
-		13: {[]int{RedeemP2PKHSigScriptSize}, makeInts(p2pkhScriptSize, 0xfd), 0, 9544},               // +291 (0xfd outputs * 1 byte CoinType each)
-		14: {[]int{RedeemP2PKHSigScriptSize}, makeInts(p2pkhScriptSize, 0xfc), p2pkhScriptSize, 9544}, // +253 (0xfc=252 outputs + 1 change, all with CoinType)
-		15: {*makeScriptSizes(0xfc, RedeemP2PKHSigScriptSize), []int{}, 0, 41847},
-		16: {*makeScriptSizes(0xfd, RedeemP2PKHSigScriptSize), []int{}, 0, 41847 + RedeemP2PKHInputSize + 4}, // 4 not 2, varint encoded twice.
+		12: {[]int{RedeemP2PKHSigScriptSize}, makeInts(p2pkhScriptSize, 0xfc), 0, 9506},               // +252 CoinType, +1 SKAValueInLen
+		13: {[]int{RedeemP2PKHSigScriptSize}, makeInts(p2pkhScriptSize, 0xfd), 0, 9545},               // +253 CoinType, +1 SKAValueInLen
+		14: {[]int{RedeemP2PKHSigScriptSize}, makeInts(p2pkhScriptSize, 0xfc), p2pkhScriptSize, 9545}, // +253 CoinType, +1 SKAValueInLen
+		15: {*makeScriptSizes(0xfc, RedeemP2PKHSigScriptSize), []int{}, 0, 42099},                     // +252 SKAValueInLen
+		16: {*makeScriptSizes(0xfd, RedeemP2PKHSigScriptSize), []int{}, 0, 42270},                     // +253 SKAValueInLen (0xfd inputs * 1 byte each)
 	}
 	for i, test := range tests {
 		outputs := make([]*wire.TxOut, 0, len(test.OutputScriptLengths))

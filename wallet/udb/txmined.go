@@ -104,6 +104,49 @@ type TxRecord struct {
 	Unpublished  bool
 }
 
+// getSSFeeMarkerType checks if a transaction is an SSFee and returns its type.
+// Returns stake.SSFeeMarkerMiner for miner SSFee, stake.SSFeeMarkerStaker for
+// staker SSFee, or stake.SSFeeMarkerNone if not an SSFee transaction.
+// This is used to distinguish miner fees (goes to ImmatureCoinbaseRewards)
+// from staker fees (goes to ImmatureStakeGeneration).
+//
+// This function first checks the SSFee marker cache (populated during credit
+// insertion) and falls back to deserializing the transaction if not cached.
+func getSSFeeMarkerType(ns walletdb.ReadBucket, cKey []byte) stake.SSFeeMarkerType {
+	// Extract tx record key (first 68 bytes of credit key)
+	if len(cKey) < 68 {
+		return stake.SSFeeMarkerNone
+	}
+	txRecKey := cKey[0:68]
+
+	// Check the cache first to avoid deserializing the transaction
+	if markerType, cached := fetchSSFeeMarker(ns, txRecKey); cached {
+		return markerType
+	}
+
+	// Cache miss - fall back to deserializing the transaction
+	txRecVal := existsRawTxRecord(ns, txRecKey)
+	if txRecVal == nil {
+		return stake.SSFeeMarkerNone
+	}
+
+	// Deserialize the transaction to check output[0]
+	var txHash chainhash.Hash
+	if err := readRawTxRecordHash(txRecKey, &txHash); err != nil {
+		return stake.SSFeeMarkerNone
+	}
+	var rec TxRecord
+	if err := readRawTxRecord(&txHash, txRecVal, &rec); err != nil {
+		return stake.SSFeeMarkerNone
+	}
+
+	// Check output[0] for SSFee marker
+	if len(rec.MsgTx.TxOut) == 0 {
+		return stake.SSFeeMarkerNone
+	}
+	return stake.HasSSFeeMarker(rec.MsgTx.TxOut[0].PkScript)
+}
+
 // NewTxRecord creates a new transaction record that may be inserted into the
 // store.  It uses memoization to save the transaction hash and the serialized
 // transaction.
@@ -166,7 +209,8 @@ type Credit struct {
 	wire.OutPoint
 	BlockMeta
 	Amount       dcrutil.Amount
-	PkScript     []byte // TODO: script version
+	SKAAmount    cointype.SKAAmount // SKA big.Int amount for values exceeding int64
+	PkScript     []byte             // TODO: script version
 	Received     time.Time
 	FromCoinBase bool
 	HasExpiry    bool
@@ -1234,6 +1278,35 @@ func (s *Store) moveMinedTx(ns walletdb.ReadWriteBucket, addrmgrNs walletdb.Read
 			return err
 		}
 
+		// For SKA credits, migrate the big.Int amount from unmined to mined bucket
+		if cred.coinType.IsSKA() {
+			skaAmt := fetchSKAUnminedCreditAmount(ns, k)
+			if !skaAmt.IsZero() {
+				// Create mined credit key and store the SKA amount
+				minedKey := keyCredit(&rec.Hash, i, &block.Block)
+				if err := putSKACreditAmount(ns, minedKey, skaAmt); err != nil {
+					return err
+				}
+				// Delete the unmined SKA amount
+				if err := deleteSKAUnminedCreditAmount(ns, k); err != nil {
+					return err
+				}
+			} else {
+				// No unmined SKA amount stored, try to get it from rec.MsgTx
+				txOut := rec.MsgTx.TxOut[i]
+				var skaAmt cointype.SKAAmount
+				if txOut.SKAValue != nil && txOut.SKAValue.Sign() > 0 {
+					skaAmt = cointype.NewSKAAmount(txOut.SKAValue)
+				}
+				if !skaAmt.IsZero() {
+					minedKey := keyCredit(&rec.Hash, i, &block.Block)
+					if err := putSKACreditAmount(ns, minedKey, skaAmt); err != nil {
+						return err
+					}
+				}
+			}
+		}
+
 		// Do not increment ticket credits.
 		if !(cred.opCode == txscript.OP_SSTX) {
 			minedBalance += amount
@@ -1472,7 +1545,7 @@ func (s *Store) AddCredit(dbtx walletdb.ReadWriteTx, rec *TxRecord, block *Block
 				Index: index,
 			},
 			block:      block.Block,
-			amount:     dcrutil.Amount(rec.MsgTx.TxOut[index].Value),
+			amount:     dcrutil.Amount(rec.MsgTx.TxOut[index].GetValue()),
 			change:     change,
 			spentBy:    indexedIncidence{index: ^uint32(0)},
 			opCode:     getStakeOpCode(version, pkScript),
@@ -1575,18 +1648,6 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 		isCoinbase = true
 	}
 
-	// Diagnostic logging for SSFee credit handling
-	ssfeeType := getSSFeeType(&rec.MsgTx)
-	if ssfeeType != "" {
-		blockHeight := int32(-1)
-		if block != nil {
-			blockHeight = block.Block.Height
-		}
-		log.Debugf("SSFee credit: tx=%v index=%d type=%s coinType=%d opcode=%v isCoinbase=%v height=%d value=%d",
-			rec.Hash, index, ssfeeType, rec.MsgTx.TxOut[index].CoinType, opCode, isCoinbase, blockHeight,
-			rec.MsgTx.TxOut[index].Value)
-	}
-
 	hasExpiry := rec.MsgTx.Expiry != wire.NoExpiryValue
 
 	if block == nil {
@@ -1604,20 +1665,55 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 		scrLoc := pkScrLocs[index]
 		scrLen := len(pkScript)
 
-		v := valueUnminedCredit(dcrutil.Amount(rec.MsgTx.TxOut[index].Value),
+		txOut := rec.MsgTx.TxOut[index]
+		v := valueUnminedCredit(dcrutil.Amount(txOut.GetValue()),
 			change, opCode, isCoinbase, hasExpiry, scrType, uint32(scrLoc),
-			uint32(scrLen), account, rec.MsgTx.TxOut[index].CoinType, DBVersion)
-		return true, putRawUnminedCredit(ns, k, v)
+			uint32(scrLen), account, txOut.CoinType, DBVersion)
+		err := putRawUnminedCredit(ns, k, v)
+		if err != nil {
+			return false, err
+		}
+
+		// For SKA credits, also store the big.Int amount separately
+		// since SKAValue may exceed int64 capacity
+		if txOut.CoinType.IsSKA() {
+			var skaAmt cointype.SKAAmount
+			if txOut.SKAValue != nil {
+				skaAmt = cointype.NewSKAAmount(txOut.SKAValue)
+			}
+			if !skaAmt.IsZero() {
+				if err := putSKAUnminedCreditAmount(ns, k, skaAmt); err != nil {
+					return false, err
+				}
+			}
+		}
+		return true, nil
 	}
 
 	k, v := existsCredit(ns, &rec.Hash, index, &block.Block)
 	if v != nil {
+		// Credit exists, but SKA amount might not be stored yet (migration case)
+		// Check if this is a SKA credit and store the big.Int amount if missing
+		txOut := rec.MsgTx.TxOut[index]
+		if txOut.CoinType.IsSKA() {
+			existingSKA := fetchSKACreditAmount(ns, k)
+			if existingSKA.IsZero() {
+				var skaAmt cointype.SKAAmount
+				if txOut.SKAValue != nil && txOut.SKAValue.Sign() > 0 {
+					skaAmt = cointype.NewSKAAmount(txOut.SKAValue)
+				}
+				if !skaAmt.IsZero() {
+					if err := putSKACreditAmount(ns, k, skaAmt); err != nil {
+						return false, err
+					}
+				}
+			}
+		}
 		return false, nil
 	}
 
-	txOutAmt := dcrutil.Amount(rec.MsgTx.TxOut[index].Value)
-	log.Debugf("Marking transaction %v output %d (%v) spendable",
-		rec.Hash, index, txOutAmt)
+	txOut := rec.MsgTx.TxOut[index]
+	txOutAmt := dcrutil.Amount(txOut.GetValue())
 
 	cred := credit{
 		outPoint: wire.OutPoint{
@@ -1631,7 +1727,7 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 		opCode:     opCode,
 		isCoinbase: isCoinbase,
 		hasExpiry:  rec.MsgTx.Expiry != wire.NoExpiryValue,
-		coinType:   rec.MsgTx.TxOut[index].CoinType,
+		coinType:   txOut.CoinType,
 	}
 	scrType := pkScriptType(scriptVersion, pkScript)
 	pkScrLocs := rec.MsgTx.PkScriptLocs()
@@ -1643,6 +1739,15 @@ func (s *Store) addCredit(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Blo
 	err := putRawCredit(ns, k, v)
 	if err != nil {
 		return false, err
+	}
+
+	// For SKA credits, also store the big.Int amount separately
+	// since SKAValue may exceed int64 capacity
+	if txOut.CoinType.IsSKA() && txOut.SKAValue != nil && txOut.SKAValue.Sign() > 0 {
+		skaAmt := cointype.NewSKAAmount(txOut.SKAValue)
+		if err := putSKACreditAmount(ns, k, skaAmt); err != nil {
+			return false, err
+		}
 	}
 
 	minedBalance, err := fetchMinedBalance(ns)
@@ -1930,7 +2035,7 @@ func (s *Store) AddMultisigOut(dbtx walletdb.ReadWriteTx, rec *TxRecord, block *
 		tree,
 		block.Block.Hash,
 		uint32(block.Block.Height),
-		dcrutil.Amount(rec.MsgTx.TxOut[index].Value),
+		dcrutil.Amount(rec.MsgTx.TxOut[index].GetValue()),
 		*empty,     // Unspent
 		0xFFFFFFFF, // Unspent
 		rec.Hash)
@@ -2380,6 +2485,7 @@ func (s *Store) outputCreditInfo(ns walletdb.ReadBucket, op wire.OutPoint, block
 	}
 
 	var amt dcrutil.Amount
+	var skaAmt cointype.SKAAmount
 	var opCode uint8
 	var isCoinbase bool
 	var hasExpiry bool
@@ -2416,6 +2522,12 @@ func (s *Store) outputCreditInfo(ns walletdb.ReadBucket, op wire.OutPoint, block
 		}
 		pkScript = tx.TxOut[op.Index].PkScript
 		coinType = tx.TxOut[op.Index].CoinType // Extract coin type from TxOut
+
+		// Fetch SKA big.Int amount for unmined SKA credits
+		if coinType.IsSKA() {
+			unminedKey := canonicalOutPoint(&op.Hash, op.Index)
+			skaAmt = fetchSKAUnminedCreditAmount(ns, unminedKey)
+		}
 	} else {
 		mined = true
 
@@ -2440,6 +2552,12 @@ func (s *Store) outputCreditInfo(ns walletdb.ReadBucket, op wire.OutPoint, block
 		if err != nil {
 			return nil, err
 		}
+
+		// Fetch SKA big.Int amount for mined SKA credits
+		if coinType.IsSKA() {
+			credK := keyCredit(&op.Hash, op.Index, block)
+			skaAmt = fetchSKACreditAmount(ns, credK)
+		}
 	}
 
 	op.Tree = wire.TxTreeRegular
@@ -2454,6 +2572,7 @@ func (s *Store) outputCreditInfo(ns walletdb.ReadBucket, op wire.OutPoint, block
 			Time:  blockTime,
 		},
 		Amount:       amt,
+		SKAAmount:    skaAmt,   // SKA big.Int amount for values exceeding int64
 		PkScript:     pkScript,
 		Received:     receiveTime,
 		FromCoinBase: isCoinbase,
@@ -3309,6 +3428,7 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 	// returned input source and reused across multiple calls.
 	var (
 		currentTotal      dcrutil.Amount
+		currentSKATotal   cointype.SKAAmount // For SKA coins that exceed int64
 		currentInputs     []*wire.TxIn
 		currentScripts    [][]byte
 		redeemScriptSizes []int
@@ -3448,6 +3568,7 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 			tree := wire.TxTreeRegular
 			var op wire.OutPoint
 			var amt dcrutil.Amount
+			var skaAmt cointype.SKAAmount // For SKA coins that exceed int64
 			var pkScript []byte
 
 			if !unmined {
@@ -3480,6 +3601,11 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 					return nil, err
 				}
 
+				// For SKA, fetch the big.Int amount from SKA bucket
+				if coinType.IsSKA() {
+					skaAmt = fetchSKACreditAmount(ns, cKey)
+				}
+
 				// This should never happen since this is already in bucket
 				// unspent, but let's be careful anyway.
 				if spent {
@@ -3487,7 +3613,12 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				}
 
 				// Skip zero value outputs.
-				if amt == 0 {
+				// For SKA, check the big.Int amount
+				if coinType.IsSKA() {
+					if skaAmt.IsZero() {
+						continue
+					}
+				} else if amt == 0 {
 					continue
 				}
 
@@ -3557,6 +3688,15 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 					return nil, err
 				}
 
+				// For SKA, fetch the big.Int amount from unmined SKA bucket
+				if coinType.IsSKA() {
+					skaAmt = fetchSKAUnminedCreditAmount(ns, k)
+					// Skip zero value SKA outputs
+					if skaAmt.IsZero() {
+						continue
+					}
+				}
+
 				// Determine the txtree for the outpoint by whether or not it's
 				// using stake tagged outputs.
 				tree = wire.TxTreeRegular
@@ -3576,7 +3716,20 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				continue
 			}
 
-			input := wire.NewTxIn(&op, int64(amt), nil)
+			// For SKA, set ValueIn to 0 (actual value is in big.Int)
+			// For VAR, use the int64 amount
+			var valueIn int64
+			if coinType.IsSKA() {
+				valueIn = 0 // SKA uses big.Int, ValueIn is placeholder
+			} else {
+				valueIn = int64(amt)
+			}
+			input := wire.NewTxIn(&op, valueIn, nil)
+
+			// Set SKAValueIn for SKA inputs (needed for V13 wire format)
+			if coinType.IsSKA() {
+				input.SKAValueIn = skaAmt.BigInt()
+			}
 
 			// Unspent credits are currently expected to be either P2PKH or
 			// P2PK, P2PKH/P2SH nested in a revocation/stakechange/vote output.
@@ -3596,7 +3749,12 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 				continue
 			}
 
-			currentTotal += amt
+			// Accumulate totals based on coin type
+			if coinType.IsSKA() {
+				currentSKATotal = currentSKATotal.Add(skaAmt)
+			} else {
+				currentTotal += amt
+			}
 			currentInputs = append(currentInputs, input)
 			currentScripts = append(currentScripts, pkScript)
 			redeemScriptSizes = append(redeemScriptSizes, scriptSize)
@@ -3604,6 +3762,7 @@ func (s *Store) MakeInputSourceWithCoinType(dbtx walletdb.ReadTx, account uint32
 
 		inputDetail := &txauthor.InputDetail{
 			Amount:            currentTotal,
+			SKAAmount:         currentSKATotal,
 			Inputs:            currentInputs,
 			Scripts:           currentScripts,
 			RedeemScriptSizes: redeemScriptSizes,
@@ -3843,15 +4002,23 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 				accountBalances[thisAcct] = ab
 			}
 
-			// Ensure coin type balance entry exists
+			// Ensure coin type balance entry exists with initialized SKA fields
 			if _, exists := ab.CoinTypeBalances[coinType]; !exists {
 				ab.CoinTypeBalances[coinType] = CoinBalance{
-					CoinType: coinType,
+					CoinType:                   coinType,
+					SKAImmatureCoinbaseRewards: cointype.Zero(),
+					SKAImmatureStakeGeneration: cointype.Zero(),
+					SKASpendable:               cointype.Zero(),
+					SKATotal:                   cointype.Zero(),
+					SKAUnconfirmed:             cointype.Zero(),
 				}
 			}
 
 			// Get current coin type balance for modification
 			coinBalance := ab.CoinTypeBalances[coinType]
+
+			// For SKA, fetch big.Int amount from SKA amount bucket
+			skaAmt := fetchSKACreditAmount(ns, cKey)
 
 			switch opcode {
 			case opNonstake:
@@ -3868,19 +4035,25 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 
 				if (isConfirmed && !requiresMaturity) || matureOutput {
 					coinBalance.Spendable += utxoAmt
+					coinBalance.SKASpendable = coinBalance.SKASpendable.Add(skaAmt)
 				} else if requiresMaturity && !matureOutput {
 					coinBalance.ImmatureCoinbaseRewards += utxoAmt
+					coinBalance.SKAImmatureCoinbaseRewards = coinBalance.SKAImmatureCoinbaseRewards.Add(skaAmt)
 				}
 				coinBalance.Total += utxoAmt
+				coinBalance.SKATotal = coinBalance.SKATotal.Add(skaAmt)
 			case txscript.OP_SSGEN:
 				// SSFee SF (staker fee) outputs for SKA use OP_SSGEN scripts
 				// These are copied from vote reward outputs and need coinbase maturity
 				if coinbaseMatured(s.chainParams, height, syncHeight) {
 					coinBalance.Spendable += utxoAmt
+					coinBalance.SKASpendable = coinBalance.SKASpendable.Add(skaAmt)
 				} else {
 					coinBalance.ImmatureStakeGeneration += utxoAmt
+					coinBalance.SKAImmatureStakeGeneration = coinBalance.SKAImmatureStakeGeneration.Add(skaAmt)
 				}
 				coinBalance.Total += utxoAmt
+				coinBalance.SKATotal = coinBalance.SKATotal.Add(skaAmt)
 			default:
 				// Skip VAR-specific opcodes for SKA coins (staking, coinbase, etc.)
 				log.Warnf("Unexpected opcode %v for SKA coin type %v", opcode, coinType)
@@ -4034,7 +4207,12 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 			coinType := fetchRawUnminedCreditCoinType(v)
 			if _, exists := ab.CoinTypeBalances[coinType]; !exists {
 				ab.CoinTypeBalances[coinType] = CoinBalance{
-					CoinType: coinType,
+					CoinType:                   coinType,
+					SKAImmatureCoinbaseRewards: cointype.Zero(),
+					SKAImmatureStakeGeneration: cointype.Zero(),
+					SKASpendable:               cointype.Zero(),
+					SKATotal:                   cointype.Zero(),
+					SKAUnconfirmed:             cointype.Zero(),
 				}
 			}
 
@@ -4043,22 +4221,31 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 			txHash := k[:32]
 			unpublished := existsUnpublished(ns, txHash)
 
+			// For SKA, fetch big.Int amount from SKA amount bucket
+			skaAmt := fetchSKAUnminedCreditAmount(ns, k)
+
 			switch opcode {
 			case opNonstake:
 				// SSFee MF (miner fee) or regular SKA transfers
 				if minConf == 0 && !unpublished {
 					coinBalance.Spendable += utxoAmt
+					coinBalance.SKASpendable = coinBalance.SKASpendable.Add(skaAmt)
 				} else if !fetchRawUnminedCreditTagIsCoinbase(v) {
 					coinBalance.Unconfirmed += utxoAmt
+					coinBalance.SKAUnconfirmed = coinBalance.SKAUnconfirmed.Add(skaAmt)
 				}
 				coinBalance.Total += utxoAmt
+				coinBalance.SKATotal = coinBalance.SKATotal.Add(skaAmt)
 			case txscript.OP_SSGEN:
 				// SSFee SF (staker fee) - always immature when unmined
 				coinBalance.ImmatureStakeGeneration += utxoAmt
+				coinBalance.SKAImmatureStakeGeneration = coinBalance.SKAImmatureStakeGeneration.Add(skaAmt)
 				coinBalance.Total += utxoAmt
+				coinBalance.SKATotal = coinBalance.SKATotal.Add(skaAmt)
 			default:
 				log.Warnf("Unhandled unmined SKA opcode %v for coin type %v", opcode, coinType)
 				coinBalance.Total += utxoAmt
+				coinBalance.SKATotal = coinBalance.SKATotal.Add(skaAmt)
 			}
 
 			ab.CoinTypeBalances[coinType] = coinBalance
@@ -4098,7 +4285,9 @@ func (s *Store) balanceFullScan(dbtx walletdb.ReadTx, minConf int32, syncHeight 
 	return accountBalances, nil
 }
 
-// CoinBalance represents balance breakdown for a specific coin type
+// CoinBalance represents balance breakdown for a specific coin type.
+// For VAR coins, use the dcrutil.Amount fields.
+// For SKA coins with amounts exceeding int64, use the SKA* fields.
 type CoinBalance struct {
 	CoinType                cointype.CoinType
 	ImmatureCoinbaseRewards dcrutil.Amount
@@ -4108,6 +4297,14 @@ type CoinBalance struct {
 	Total                   dcrutil.Amount
 	VotingAuthority         dcrutil.Amount
 	Unconfirmed             dcrutil.Amount
+
+	// SKA big.Int amounts for coins that exceed int64 capacity.
+	// These are only populated for SKA coin types.
+	SKAImmatureCoinbaseRewards  cointype.SKAAmount
+	SKAImmatureStakeGeneration  cointype.SKAAmount // SKA fees distributed to stakers
+	SKASpendable                cointype.SKAAmount
+	SKATotal                    cointype.SKAAmount
+	SKAUnconfirmed              cointype.SKAAmount
 }
 
 // Balances describes a breakdown of an account's balances in various
@@ -4158,6 +4355,7 @@ func (s *Store) AccountBalances(dbtx walletdb.ReadTx, minConf int32) (map[uint32
 // AccountBalanceByCoinType returns the balance for a specific coin type
 // within an account. This is more efficient than AccountBalance as it only
 // processes outputs for the specified coin type.
+// For SKA coins, big.Int amounts are used via the SKA* fields in CoinBalance.
 func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, account uint32, coinType cointype.CoinType) (CoinBalance, error) {
 	_, syncHeight := s.MainChainTip(dbtx)
 
@@ -4165,8 +4363,14 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 	addrmgrNs := dbtx.ReadBucket(waddrmgrBucketKey)
 
 	balance := CoinBalance{
-		CoinType: coinType,
+		CoinType:                   coinType,
+		SKAImmatureCoinbaseRewards: cointype.Zero(),
+		SKASpendable:               cointype.Zero(),
+		SKATotal:                   cointype.Zero(),
+		SKAUnconfirmed:             cointype.Zero(),
 	}
+
+	isSKA := coinType.IsSKA()
 
 	// Process confirmed credits for specified coin type
 	bucketName := bucketUnspentForCoinType(coinType)
@@ -4206,10 +4410,19 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 				continue
 			}
 
-			utxoAmt, err := fetchRawCreditAmount(cVal)
-			if err != nil {
-				c.Close()
-				return balance, err
+			// For SKA, use big.Int amount from separate bucket
+			var utxoAmt dcrutil.Amount
+			var skaAmt cointype.SKAAmount
+			if isSKA {
+				skaAmt = fetchSKACreditAmount(ns, cKey)
+				// Also get int64 for backward compatibility fields
+				utxoAmt, _ = fetchRawCreditAmount(cVal)
+			} else {
+				utxoAmt, err = fetchRawCreditAmount(cVal)
+				if err != nil {
+					c.Close()
+					return balance, err
+				}
 			}
 
 			height := extractRawCreditHeight(cKey)
@@ -4226,30 +4439,67 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 
 				if (isConfirmed && !creditFromCoinbase) || matureCoinbase {
 					balance.Spendable += utxoAmt
+					if isSKA {
+						balance.SKASpendable = balance.SKASpendable.Add(skaAmt)
+					}
 				} else if creditFromCoinbase && !matureCoinbase {
 					balance.ImmatureCoinbaseRewards += utxoAmt
+					if isSKA {
+						balance.SKAImmatureCoinbaseRewards = balance.SKAImmatureCoinbaseRewards.Add(skaAmt)
+					}
 				}
 				balance.Total += utxoAmt
+				if isSKA {
+					balance.SKATotal = balance.SKATotal.Add(skaAmt)
+				}
 
 			case txscript.OP_SSTX:
 				balance.VotingAuthority += utxoAmt
 				balance.Total += utxoAmt
+				if isSKA {
+					balance.SKATotal = balance.SKATotal.Add(skaAmt)
+				}
 
 			case txscript.OP_SSGEN:
 				fallthrough
 			case txscript.OP_SSRTX:
 				if coinbaseMatured(s.chainParams, height, syncHeight) {
 					balance.Spendable += utxoAmt
+					if isSKA {
+						balance.SKASpendable = balance.SKASpendable.Add(skaAmt)
+					}
 				} else {
-					balance.ImmatureStakeGeneration += utxoAmt
+					// Check if this is a miner SSFee (goes to ImmatureCoinbaseRewards)
+					// or staker SSFee/vote (goes to ImmatureStakeGeneration)
+					ssfeeType := getSSFeeMarkerType(ns, cKey)
+					if ssfeeType == stake.SSFeeMarkerMiner {
+						balance.ImmatureCoinbaseRewards += utxoAmt
+						if isSKA {
+							balance.SKAImmatureCoinbaseRewards = balance.SKAImmatureCoinbaseRewards.Add(skaAmt)
+						}
+					} else {
+						balance.ImmatureStakeGeneration += utxoAmt
+						if isSKA {
+							balance.SKAImmatureStakeGeneration = balance.SKAImmatureStakeGeneration.Add(skaAmt)
+						}
+					}
 				}
 				balance.Total += utxoAmt
+				if isSKA {
+					balance.SKATotal = balance.SKATotal.Add(skaAmt)
+				}
 
 			case txscript.OP_SSTXCHANGE:
 				if ticketChangeMatured(s.chainParams, height, syncHeight) {
 					balance.Spendable += utxoAmt
+					if isSKA {
+						balance.SKASpendable = balance.SKASpendable.Add(skaAmt)
+					}
 				}
 				balance.Total += utxoAmt
+				if isSKA {
+					balance.SKATotal = balance.SKATotal.Add(skaAmt)
+				}
 
 			default:
 				log.Warnf("Unhandled opcode: %v", opcode)
@@ -4288,13 +4538,24 @@ func (s *Store) AccountBalanceByCoinType(dbtx walletdb.ReadTx, minConf int32, ac
 				}
 
 				// Add to unconfirmed balance
-				amt, err := fetchRawUnminedCreditAmount(v)
-				if err != nil {
-					c.Close()
-					return balance, err
+				// For SKA, use big.Int amount from separate bucket
+				if isSKA {
+					skaAmt := fetchSKAUnminedCreditAmount(ns, k)
+					balance.SKAUnconfirmed = balance.SKAUnconfirmed.Add(skaAmt)
+					balance.SKATotal = balance.SKATotal.Add(skaAmt)
+					// Also update int64 fields for backward compatibility
+					amt, _ := fetchRawUnminedCreditAmount(v)
+					balance.Unconfirmed += amt
+					balance.Total += amt
+				} else {
+					amt, err := fetchRawUnminedCreditAmount(v)
+					if err != nil {
+						c.Close()
+						return balance, err
+					}
+					balance.Unconfirmed += amt
+					balance.Total += amt
 				}
-				balance.Unconfirmed += amt
-				balance.Total += amt
 			}
 			c.Close()
 		}

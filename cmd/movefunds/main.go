@@ -78,8 +78,19 @@ func makeInputSource(outputs []types.ListUnspentResult) (dcrutil.Amount, txautho
 		sourceErr         error
 	)
 	for _, output := range outputs {
-
-		outputAmount, err := dcrutil.NewAmount(output.Amount)
+		// Handle both float64 (VAR) and string (SKA) amounts
+		var amountFloat float64
+		switch v := output.Amount.(type) {
+		case float64:
+			amountFloat = v
+		case string:
+			// Skip SKA outputs in movefunds (VAR only tool)
+			continue
+		default:
+			sourceErr = fmt.Errorf("unexpected amount type %T", output.Amount)
+			break
+		}
+		outputAmount, err := dcrutil.NewAmount(amountFloat)
 		if err != nil {
 			sourceErr = fmt.Errorf("invalid amount `%v` in listunspent result",
 				output.Amount)

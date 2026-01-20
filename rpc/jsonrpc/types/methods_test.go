@@ -798,16 +798,16 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendfrom",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", 0.5)
+				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", "0.5")
 			},
 			staticCmd: func() any {
-				return NewSendFromCmd("from", "1Address", 0.5, nil, nil, nil)
+				return NewSendFromCmd("from", "1Address", "0.5", nil, nil, nil)
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address",0.5],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address","0.5"],"id":1}`,
 			unmarshalled: &SendFromCmd{
 				FromAccount: "from",
 				ToAddress:   "1Address",
-				Amount:      0.5,
+				Amount:      "0.5",
 				MinConf:     dcrjson.Int(1),
 				Comment:     nil,
 				CommentTo:   nil,
@@ -816,16 +816,16 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendfrom optional1",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", 0.5, 6)
+				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", "0.5", 6)
 			},
 			staticCmd: func() any {
-				return NewSendFromCmd("from", "1Address", 0.5, dcrjson.Int(6), nil, nil)
+				return NewSendFromCmd("from", "1Address", "0.5", dcrjson.Int(6), nil, nil)
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address",0.5,6],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address","0.5",6],"id":1}`,
 			unmarshalled: &SendFromCmd{
 				FromAccount: "from",
 				ToAddress:   "1Address",
-				Amount:      0.5,
+				Amount:      "0.5",
 				MinConf:     dcrjson.Int(6),
 				Comment:     nil,
 				CommentTo:   nil,
@@ -834,17 +834,17 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendfrom optional2",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", 0.5, 6, "comment")
+				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", "0.5", 6, "comment")
 			},
 			staticCmd: func() any {
-				return NewSendFromCmd("from", "1Address", 0.5, dcrjson.Int(6),
+				return NewSendFromCmd("from", "1Address", "0.5", dcrjson.Int(6),
 					dcrjson.String("comment"), nil)
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address",0.5,6,"comment"],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address","0.5",6,"comment"],"id":1}`,
 			unmarshalled: &SendFromCmd{
 				FromAccount: "from",
 				ToAddress:   "1Address",
-				Amount:      0.5,
+				Amount:      "0.5",
 				MinConf:     dcrjson.Int(6),
 				Comment:     dcrjson.String("comment"),
 				CommentTo:   nil,
@@ -853,17 +853,17 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendfrom optional3",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", 0.5, 6, "comment", "commentto")
+				return dcrjson.NewCmd(Method("sendfrom"), "from", "1Address", "0.5", 6, "comment", "commentto")
 			},
 			staticCmd: func() any {
-				return NewSendFromCmd("from", "1Address", 0.5, dcrjson.Int(6),
+				return NewSendFromCmd("from", "1Address", "0.5", dcrjson.Int(6),
 					dcrjson.String("comment"), dcrjson.String("commentto"))
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address",0.5,6,"comment","commentto"],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendfrom","params":["from","1Address","0.5",6,"comment","commentto"],"id":1}`,
 			unmarshalled: &SendFromCmd{
 				FromAccount: "from",
 				ToAddress:   "1Address",
-				Amount:      0.5,
+				Amount:      "0.5",
 				MinConf:     dcrjson.Int(6),
 				Comment:     dcrjson.String("comment"),
 				CommentTo:   dcrjson.String("commentto"),
@@ -872,16 +872,16 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendmany",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendmany"), "from", `{"1Address":0.5}`)
+				return dcrjson.NewCmd(Method("sendmany"), "from", `{"1Address":"0.5"}`)
 			},
 			staticCmd: func() any {
-				amounts := map[string]float64{"1Address": 0.5}
+				amounts := map[string]string{"1Address": "0.5"}
 				return NewSendManyCmd("from", amounts, nil, nil)
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendmany","params":["from",{"1Address":0.5}],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendmany","params":["from",{"1Address":"0.5"}],"id":1}`,
 			unmarshalled: &SendManyCmd{
 				FromAccount: "from",
-				Amounts:     map[string]float64{"1Address": 0.5},
+				Amounts:     map[string]string{"1Address": "0.5"},
 				MinConf:     dcrjson.Int(1),
 				Comment:     nil,
 			},
@@ -889,16 +889,16 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendmany optional1",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendmany"), "from", `{"1Address":0.5}`, 6)
+				return dcrjson.NewCmd(Method("sendmany"), "from", `{"1Address":"0.5"}`, 6)
 			},
 			staticCmd: func() any {
-				amounts := map[string]float64{"1Address": 0.5}
+				amounts := map[string]string{"1Address": "0.5"}
 				return NewSendManyCmd("from", amounts, dcrjson.Int(6), nil)
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendmany","params":["from",{"1Address":0.5},6],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendmany","params":["from",{"1Address":"0.5"},6],"id":1}`,
 			unmarshalled: &SendManyCmd{
 				FromAccount: "from",
-				Amounts:     map[string]float64{"1Address": 0.5},
+				Amounts:     map[string]string{"1Address": "0.5"},
 				MinConf:     dcrjson.Int(6),
 				Comment:     nil,
 			},
@@ -906,16 +906,16 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendmany optional2",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendmany"), "from", `{"1Address":0.5}`, 6, "comment")
+				return dcrjson.NewCmd(Method("sendmany"), "from", `{"1Address":"0.5"}`, 6, "comment")
 			},
 			staticCmd: func() any {
-				amounts := map[string]float64{"1Address": 0.5}
+				amounts := map[string]string{"1Address": "0.5"}
 				return NewSendManyCmd("from", amounts, dcrjson.Int(6), dcrjson.String("comment"))
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendmany","params":["from",{"1Address":0.5},6,"comment"],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendmany","params":["from",{"1Address":"0.5"},6,"comment"],"id":1}`,
 			unmarshalled: &SendManyCmd{
 				FromAccount: "from",
-				Amounts:     map[string]float64{"1Address": 0.5},
+				Amounts:     map[string]string{"1Address": "0.5"},
 				MinConf:     dcrjson.Int(6),
 				Comment:     dcrjson.String("comment"),
 			},
@@ -923,15 +923,15 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendtoaddress",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendtoaddress"), "1Address", 0.5)
+				return dcrjson.NewCmd(Method("sendtoaddress"), "1Address", "0.5")
 			},
 			staticCmd: func() any {
-				return NewSendToAddressCmd("1Address", 0.5, nil, nil)
+				return NewSendToAddressCmd("1Address", "0.5", nil, nil)
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendtoaddress","params":["1Address",0.5],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendtoaddress","params":["1Address","0.5"],"id":1}`,
 			unmarshalled: &SendToAddressCmd{
 				Address:   "1Address",
-				Amount:    0.5,
+				Amount:    "0.5",
 				Comment:   nil,
 				CommentTo: nil,
 			},
@@ -939,16 +939,16 @@ func TestWalletSvrCmds(t *testing.T) {
 		{
 			name: "sendtoaddress optional1",
 			newCmd: func() (any, error) {
-				return dcrjson.NewCmd(Method("sendtoaddress"), "1Address", 0.5, "comment", "commentto")
+				return dcrjson.NewCmd(Method("sendtoaddress"), "1Address", "0.5", "comment", "commentto")
 			},
 			staticCmd: func() any {
-				return NewSendToAddressCmd("1Address", 0.5, dcrjson.String("comment"),
+				return NewSendToAddressCmd("1Address", "0.5", dcrjson.String("comment"),
 					dcrjson.String("commentto"))
 			},
-			marshalled: `{"jsonrpc":"1.0","method":"sendtoaddress","params":["1Address",0.5,"comment","commentto"],"id":1}`,
+			marshalled: `{"jsonrpc":"1.0","method":"sendtoaddress","params":["1Address","0.5","comment","commentto"],"id":1}`,
 			unmarshalled: &SendToAddressCmd{
 				Address:   "1Address",
-				Amount:    0.5,
+				Amount:    "0.5",
 				Comment:   dcrjson.String("comment"),
 				CommentTo: dcrjson.String("commentto"),
 			},

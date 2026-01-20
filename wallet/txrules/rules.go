@@ -79,6 +79,19 @@ func IsDustOutput(output *wire.TxOut, relayFeePerKb dcrutil.Amount) bool {
 // output.  Returns with errors.Invalid if output violates consensus rules, and
 // errors.Policy if the output violates a non-consensus policy.
 func CheckOutput(output *wire.TxOut, relayFeePerKb dcrutil.Amount) error {
+	// For SKA outputs, use SKAValue for validation
+	if output.CoinType.IsSKA() {
+		// SKA uses big.Int (SKAValue), not int64 (Value)
+		if output.SKAValue == nil || output.SKAValue.Sign() < 0 {
+			return errors.E(errors.Invalid, "SKA transaction output amount is nil or negative")
+		}
+		// SKA max amount check would be against chain params, but for now
+		// we trust the emission limits configured in the chain params.
+		// Dust check is skipped for SKA as it uses different economics.
+		return nil
+	}
+
+	// VAR output validation
 	if output.Value < 0 {
 		return errors.E(errors.Invalid, "transaction output amount is negative")
 	}

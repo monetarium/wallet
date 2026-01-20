@@ -151,6 +151,20 @@ var (
 	bucketCFilters                = []byte("cf")
 	bucketTicketCommitments       = []byte("cmt")
 	bucketTicketCommitmentsUsp    = []byte("cmu")
+
+	// bucketSKACreditAmounts stores big.Int amounts for SKA credits that exceed int64.
+	// Key: same as credit key (72 bytes for mined, 36 bytes for unmined)
+	// Value: cointype.SKAAmount.SignedBytes() - variable length big.Int
+	bucketSKACreditAmounts = []byte("ska")
+
+	// bucketSKAUnminedCreditAmounts stores big.Int amounts for unmined SKA credits.
+	bucketSKAUnminedCreditAmounts = []byte("skam")
+
+	// bucketSSFeeMarkers stores SSFee marker types for transactions to avoid
+	// deserializing transactions just to check output[0] for the marker.
+	// Key: tx record key (68 bytes)
+	// Value: SSFeeMarkerType (1 byte)
+	bucketSSFeeMarkers = []byte("ssfee")
 )
 
 // getActiveSKACoinTypesFromParams returns a slice of coin types that are configured
@@ -570,6 +584,18 @@ func putTxRecord(ns walletdb.ReadWriteBucket, rec *TxRecord, block *Block) error
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
+
+	// Cache SSFee marker type to avoid deserializing the transaction later.
+	// Check if output[0] has an SSFee marker and cache the result.
+	if len(rec.MsgTx.TxOut) > 0 {
+		markerType := stake.HasSSFeeMarker(rec.MsgTx.TxOut[0].PkScript)
+		if markerType != stake.SSFeeMarkerNone {
+			if err := putSSFeeMarker(ns, k, markerType); err != nil {
+				return err
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -622,6 +648,25 @@ func readRawTxRecordLegacy(txHash *chainhash.Hash, v []byte, rec *TxRecord) erro
 	rec.Received = time.Unix(int64(byteOrder.Uint64(v)), 0)
 	// Use legacy protocol version to deserialize without CoinType
 	err := rec.MsgTx.BtcDecode(bytes.NewReader(v[8:]), wire.DualCoinVersion-1)
+	if err != nil {
+		return errors.E(errors.IO, err)
+	}
+	rec.TxType = stake.DetermineTxType(&rec.MsgTx)
+	return nil
+}
+
+// readRawTxRecordV12 is like readRawTxRecord but deserializes transactions
+// using the V12 wire format (DualCoinVersion) which serializes TxOut as
+// [Value:8][CoinType:1][Version:2][PkScript:var].
+// This is used by database upgrade functions to migrate from V12 to V13 format.
+func readRawTxRecordV12(txHash *chainhash.Hash, v []byte, rec *TxRecord) error {
+	if len(v) < 8 {
+		return errors.E(errors.IO, errors.Errorf("tx record len %d", len(v)))
+	}
+	rec.Hash = *txHash
+	rec.Received = time.Unix(int64(byteOrder.Uint64(v)), 0)
+	// Use V12 protocol version to deserialize with old TxOut format
+	err := rec.MsgTx.BtcDecode(bytes.NewReader(v[8:]), wire.DualCoinVersion)
 	if err != nil {
 		return errors.E(errors.IO, err)
 	}
@@ -931,6 +976,100 @@ func fetchRawCreditAmountChange(v []byte) (dcrutil.Amount, bool, error) {
 	return dcrutil.Amount(byteOrder.Uint64(v)), v[8]&(1<<1) != 0, nil
 }
 
+// putSKACreditAmount stores the big.Int amount for an SKA credit.
+// This is used for SKA amounts that exceed int64 capacity.
+// The bucket is created during database upgrade (version 30).
+func putSKACreditAmount(ns walletdb.ReadWriteBucket, k []byte, amount cointype.SKAAmount) error {
+	bucket := ns.NestedReadWriteBucket(bucketSKACreditAmounts)
+	if bucket == nil {
+		return errors.E(errors.IO, "missing SKA credit amounts bucket")
+	}
+	return bucket.Put(k, amount.SignedBytes())
+}
+
+// fetchSKACreditAmount retrieves the big.Int amount for an SKA credit.
+// Returns nil if no big.Int amount was stored (falls back to int64).
+func fetchSKACreditAmount(ns walletdb.ReadBucket, k []byte) cointype.SKAAmount {
+	bucket := ns.NestedReadBucket(bucketSKACreditAmounts)
+	if bucket == nil {
+		return cointype.Zero()
+	}
+	v := bucket.Get(k)
+	if v == nil {
+		return cointype.Zero()
+	}
+	return cointype.SKAAmountFromSignedBytes(v)
+}
+
+// putSKAUnminedCreditAmount stores the big.Int amount for an unmined SKA credit.
+func putSKAUnminedCreditAmount(ns walletdb.ReadWriteBucket, k []byte, amount cointype.SKAAmount) error {
+	bucket := ns.NestedReadWriteBucket(bucketSKAUnminedCreditAmounts)
+	if bucket == nil {
+		var err error
+		bucket, err = ns.CreateBucket(bucketSKAUnminedCreditAmounts)
+		if err != nil {
+			return errors.E(errors.IO, err)
+		}
+	}
+	return bucket.Put(k, amount.SignedBytes())
+}
+
+// fetchSKAUnminedCreditAmount retrieves the big.Int amount for an unmined SKA credit.
+func fetchSKAUnminedCreditAmount(ns walletdb.ReadBucket, k []byte) cointype.SKAAmount {
+	bucket := ns.NestedReadBucket(bucketSKAUnminedCreditAmounts)
+	if bucket == nil {
+		return cointype.Zero()
+	}
+	v := bucket.Get(k)
+	if v == nil {
+		return cointype.Zero()
+	}
+	return cointype.SKAAmountFromSignedBytes(v)
+}
+
+// deleteSKACreditAmount removes the big.Int amount for an SKA credit.
+func deleteSKACreditAmount(ns walletdb.ReadWriteBucket, k []byte) error {
+	bucket := ns.NestedReadWriteBucket(bucketSKACreditAmounts)
+	if bucket == nil {
+		return nil
+	}
+	return bucket.Delete(k)
+}
+
+// deleteSKAUnminedCreditAmount removes the big.Int amount for an unmined SKA credit.
+func deleteSKAUnminedCreditAmount(ns walletdb.ReadWriteBucket, k []byte) error {
+	bucket := ns.NestedReadWriteBucket(bucketSKAUnminedCreditAmounts)
+	if bucket == nil {
+		return nil
+	}
+	return bucket.Delete(k)
+}
+
+// putSSFeeMarker stores the SSFee marker type for a transaction.
+// This caches the marker type to avoid deserializing transactions for lookups.
+// The bucket is created during database upgrade (version 30).
+func putSSFeeMarker(ns walletdb.ReadWriteBucket, txRecKey []byte, markerType stake.SSFeeMarkerType) error {
+	bucket := ns.NestedReadWriteBucket(bucketSSFeeMarkers)
+	if bucket == nil {
+		return errors.E(errors.IO, "missing SSFee markers bucket")
+	}
+	return bucket.Put(txRecKey, []byte{byte(markerType)})
+}
+
+// fetchSSFeeMarker retrieves the cached SSFee marker type for a transaction.
+// Returns SSFeeMarkerNone and false if not cached.
+func fetchSSFeeMarker(ns walletdb.ReadBucket, txRecKey []byte) (stake.SSFeeMarkerType, bool) {
+	bucket := ns.NestedReadBucket(bucketSSFeeMarkers)
+	if bucket == nil {
+		return stake.SSFeeMarkerNone, false
+	}
+	v := bucket.Get(txRecKey)
+	if v == nil || len(v) == 0 {
+		return stake.SSFeeMarkerNone, false
+	}
+	return stake.SSFeeMarkerType(v[0]), true
+}
+
 // fetchRawCreditUnspentValue returns the unspent value for a raw credit key.
 // This may be used to mark a credit as unspent.
 func fetchRawCreditUnspentValue(k []byte) ([]byte, error) {
@@ -1100,6 +1239,7 @@ func deleteRawCredit(ns walletdb.ReadWriteBucket, k []byte) error {
 //	it.elem.Spent = existsRawUnminedInput(ns, k) != nil
 type creditIterator struct {
 	c         walletdb.ReadWriteCursor // Set to nil after final iteration
+	ns        walletdb.ReadBucket      // Namespace for fetching SKA amounts
 	dbVersion uint32
 	prefix    []byte
 	ck        []byte
@@ -1110,7 +1250,7 @@ type creditIterator struct {
 
 func makeReadCreditIterator(ns walletdb.ReadBucket, prefix []byte, dbVersion uint32) creditIterator {
 	c := ns.NestedReadBucket(bucketCredits).ReadCursor()
-	return creditIterator{c: readCursor{c}, prefix: prefix, dbVersion: dbVersion}
+	return creditIterator{c: readCursor{c}, ns: ns, prefix: prefix, dbVersion: dbVersion}
 }
 
 func (it *creditIterator) readElem() error {
@@ -1128,6 +1268,13 @@ func (it *creditIterator) readElem() error {
 	it.elem.IsCoinbase = fetchRawCreditIsCoinbase(it.cv)
 	it.elem.HasExpiry = fetchRawCreditHasExpiry(it.cv, it.dbVersion)
 	it.elem.CoinType = fetchRawCreditCoinType(it.cv)
+
+	// For SKA credits, fetch the big.Int amount from the SKA bucket
+	if it.elem.CoinType.IsSKA() && it.ns != nil {
+		it.elem.SKAAmount = fetchSKACreditAmount(it.ns, it.ck)
+	} else {
+		it.elem.SKAAmount = cointype.Zero()
+	}
 
 	return nil
 }
@@ -1458,9 +1605,16 @@ func (it *debitIterator) readElem() error {
 	creditKey := it.cv[8:80]
 	if creditVal := existsRawCredit(it.ns, creditKey); creditVal != nil {
 		it.elem.CoinType = fetchRawCreditCoinType(creditVal)
+		// For SKA debits, fetch the big.Int amount from the SKA bucket
+		if it.elem.CoinType.IsSKA() {
+			it.elem.SKAAmount = fetchSKACreditAmount(it.ns, creditKey)
+		} else {
+			it.elem.SKAAmount = cointype.Zero()
+		}
 	} else {
 		// If credit not found, default to VAR for backward compatibility
 		it.elem.CoinType = cointype.CoinTypeVAR
+		it.elem.SKAAmount = cointype.Zero()
 	}
 
 	return nil
@@ -1816,6 +1970,7 @@ func deleteRawUnminedCredit(ns walletdb.ReadWriteBucket, k []byte, chainParams *
 //	spent := existsRawUnminedInput(ns, it.ck) != nil
 type unminedCreditIterator struct {
 	c         walletdb.ReadWriteCursor
+	ns        walletdb.ReadBucket // Namespace for fetching SKA amounts
 	dbVersion uint32
 	prefix    []byte
 	ck        []byte
@@ -1834,7 +1989,7 @@ func (r readCursor) Delete() error {
 
 func makeReadUnminedCreditIterator(ns walletdb.ReadBucket, txHash *chainhash.Hash, dbVersion uint32) unminedCreditIterator {
 	c := ns.NestedReadBucket(bucketUnminedCredits).ReadCursor()
-	return unminedCreditIterator{c: readCursor{c}, prefix: txHash[:], dbVersion: dbVersion}
+	return unminedCreditIterator{c: readCursor{c}, ns: ns, prefix: txHash[:], dbVersion: dbVersion}
 }
 
 func (it *unminedCreditIterator) readElem() error {
@@ -1851,7 +2006,15 @@ func (it *unminedCreditIterator) readElem() error {
 	it.elem.Amount = amount
 	it.elem.Change = change
 	it.elem.HasExpiry = fetchRawCreditHasExpiry(it.cv, it.dbVersion)
+	it.elem.CoinType = fetchRawUnminedCreditCoinType(it.cv)
 	// Spent intentionally not set
+
+	// For SKA credits, fetch the big.Int amount from the SKA bucket
+	if it.elem.CoinType.IsSKA() && it.ns != nil {
+		it.elem.SKAAmount = fetchSKAUnminedCreditAmount(it.ns, it.ck)
+	} else {
+		it.elem.SKAAmount = cointype.Zero()
+	}
 
 	return nil
 }

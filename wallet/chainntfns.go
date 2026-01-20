@@ -503,10 +503,19 @@ func (w *Wallet) processTransactionRecord(ctx context.Context, dbtx walletdb.Rea
 			}
 			addrs = []stdaddr.Address{addr}
 			watchOutPoint = false
-		} else if output.Value == 0 {
+		} else if output.Value == 0 && (!output.CoinType.IsSKA() || output.SKAValue == nil || output.SKAValue.Sign() == 0) {
 			// The only case of outputs with 0 value that we need to handle are
-			// ticket commitments. All other outputs can be ignored.
+			// ticket commitments and SKA outputs (which use SKAValue instead of Value).
+			// All other outputs can be ignored.
+			log.Debugf("Skipping output %s:%d - Value=0, CoinType=%v, IsSKA=%v, SKAValue=%v",
+				rec.Hash, i, output.CoinType, output.CoinType.IsSKA(), output.SKAValue)
 			continue
+		}
+
+		// Debug: Log SKA outputs being processed
+		if output.CoinType.IsSKA() {
+			log.Debugf("Processing SKA output %s:%d - CoinType=%v, SKAValue=%v, addrs=%v",
+				rec.Hash, i, output.CoinType, output.SKAValue, addrs)
 		}
 
 		var tree int8
@@ -519,11 +528,21 @@ func (w *Wallet) processTransactionRecord(ctx context.Context, dbtx walletdb.Rea
 			// Missing addresses are skipped.  Other errors should
 			// be propagated.
 			if errors.Is(err, errors.NotExist) {
+				if output.CoinType.IsSKA() {
+					log.Debugf("SKA output %s:%d - address %v NOT found in wallet", rec.Hash, i, addr)
+				}
 				continue
 			}
 			if err != nil {
 				return nil, errors.E(op, err)
 			}
+
+			// Debug: Log when we're about to add a credit for SKA
+			if output.CoinType.IsSKA() {
+				log.Debugf("Adding SKA credit: tx=%s, output=%d, cointype=%v, SKAValue=%v, account=%v",
+					rec.Hash, i, output.CoinType, output.SKAValue, ma.Account())
+			}
+
 			if isTicketCommit {
 				err = w.txStore.AddTicketCommitment(txmgrNs, rec, uint32(i),
 					ma.Account())

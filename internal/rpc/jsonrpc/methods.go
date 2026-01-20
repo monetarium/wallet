@@ -91,6 +91,166 @@ func validateCoinType(coinType cointype.CoinType) error {
 	return nil
 }
 
+// getAtomsPerCoin returns AtomsPerCoin for the given coin type from chain params.
+// VAR uses 1e8, SKA uses configured value (typically 1e18).
+func getAtomsPerCoin(chainParams *chaincfg.Params, ct cointype.CoinType) *big.Int {
+	if ct.IsVAR() {
+		return big.NewInt(cointype.AtomsPerVAR)
+	}
+	if config, ok := chainParams.SKACoins[ct]; ok && config.AtomsPerCoin != nil {
+		return config.AtomsPerCoin
+	}
+	return cointype.AtomsPerSKACoin
+}
+
+// atomsToCoins converts atoms to coin units for display.
+// Uses the appropriate AtomsPerCoin based on coin type.
+func atomsToCoins(atoms int64, atomsPerCoin *big.Int) float64 {
+	if atomsPerCoin == nil || atomsPerCoin.Sign() == 0 {
+		return float64(atoms) / cointype.AtomsPerVAR
+	}
+	apc, _ := atomsPerCoin.Float64()
+	return float64(atoms) / apc
+}
+
+// coinsToAtoms converts coin units to atoms for transaction creation.
+// Uses the appropriate AtomsPerCoin based on coin type.
+// WARNING: This loses precision for large SKA amounts. Use coinsToAtomsBig for SKA.
+func coinsToAtoms(coins float64, atomsPerCoin *big.Int) int64 {
+	if atomsPerCoin == nil || atomsPerCoin.Sign() == 0 {
+		return int64(coins * cointype.AtomsPerVAR)
+	}
+	apc, _ := atomsPerCoin.Float64()
+	return int64(coins * apc)
+}
+
+// coinsToAtomsBig converts a coin amount (as string or float64) to atoms using big.Int.
+// For SKA amounts, this preserves full precision. The amount parameter can be:
+// - string: "123.456789012345678901" (full precision for SKA)
+// - float64: 123.456 (limited precision, mainly for VAR)
+func coinsToAtomsBig(amount interface{}, atomsPerCoin *big.Int) (*big.Int, error) {
+	if atomsPerCoin == nil || atomsPerCoin.Sign() == 0 {
+		atomsPerCoin = big.NewInt(cointype.AtomsPerVAR)
+	}
+
+	var amountStr string
+	switch v := amount.(type) {
+	case string:
+		amountStr = v
+	case float64:
+		// Format with enough precision for VAR (8 decimals)
+		amountStr = strconv.FormatFloat(v, 'f', -1, 64)
+	case int64:
+		amountStr = strconv.FormatInt(v, 10)
+	case int:
+		amountStr = strconv.Itoa(v)
+	default:
+		return nil, fmt.Errorf("unsupported amount type: %T", amount)
+	}
+
+	// Parse the decimal amount string
+	// Split on decimal point
+	parts := strings.Split(amountStr, ".")
+	if len(parts) > 2 {
+		return nil, fmt.Errorf("invalid amount format: %s", amountStr)
+	}
+
+	// Get the decimal places from atomsPerCoin (e.g., 1e18 = 18 decimals)
+	decimals := len(atomsPerCoin.String()) - 1
+
+	var intPart, fracPart string
+	intPart = parts[0]
+	if len(parts) == 2 {
+		fracPart = parts[1]
+	}
+
+	// Remove leading minus if present, handle separately
+	negative := false
+	if strings.HasPrefix(intPart, "-") {
+		negative = true
+		intPart = intPart[1:]
+	}
+
+	// Pad or truncate fractional part to match decimals
+	if len(fracPart) < decimals {
+		fracPart += strings.Repeat("0", decimals-len(fracPart))
+	} else if len(fracPart) > decimals {
+		fracPart = fracPart[:decimals]
+	}
+
+	// Combine integer and fractional parts
+	atomsStr := intPart + fracPart
+
+	// Parse as big.Int
+	atoms, ok := new(big.Int).SetString(atomsStr, 10)
+	if !ok {
+		return nil, fmt.Errorf("failed to parse amount: %s", amountStr)
+	}
+
+	if negative {
+		atoms.Neg(atoms)
+	}
+
+	return atoms, nil
+}
+
+// atomsToCoinsBig converts atoms (big.Int) to coin string with full precision.
+// This is the inverse of coinsToAtomsBig.
+func atomsToCoinsBig(atoms *big.Int, atomsPerCoin *big.Int) string {
+	if atoms == nil || atoms.Sign() == 0 {
+		return "0"
+	}
+	if atomsPerCoin == nil || atomsPerCoin.Sign() == 0 {
+		atomsPerCoin = big.NewInt(cointype.AtomsPerVAR)
+	}
+
+	// Calculate decimal places from atomsPerCoin (e.g., 1e18 = 18 decimals)
+	decimals := len(atomsPerCoin.String()) - 1
+
+	// Get string representation of atoms
+	atomsStr := atoms.String()
+
+	// Handle negative amounts
+	negative := false
+	if atomsStr[0] == '-' {
+		negative = true
+		atomsStr = atomsStr[1:]
+	}
+
+	var result string
+	if len(atomsStr) <= decimals {
+		// Pad with leading zeros: "0.000...XXX"
+		result = "0." + strings.Repeat("0", decimals-len(atomsStr)) + atomsStr
+	} else {
+		// Insert decimal point at the right position
+		insertPos := len(atomsStr) - decimals
+		result = atomsStr[:insertPos] + "." + atomsStr[insertPos:]
+	}
+
+	// Trim trailing zeros after decimal, but keep at least one decimal place
+	if strings.Contains(result, ".") {
+		result = strings.TrimRight(result, "0")
+		if strings.HasSuffix(result, ".") {
+			result += "0"
+		}
+	}
+
+	if negative {
+		result = "-" + result
+	}
+
+	return result
+}
+
+// skaAmountToAtomsString returns the SKA amount as a raw atom string (no decimals).
+// Use this when you need the exact atom count for calculations.
+func skaAmountToAtomsString(amount cointype.SKAAmount) string {
+	if amount.IsZero() {
+		return ""
+	}
+	return amount.String()
+}
+
 // confirms returns the number of confirmations for a transaction in a block at
 // height txHeight (or -1 for an unconfirmed tx) given the chain height
 // curHeight.
@@ -988,7 +1148,7 @@ func (s *Server) fundRawTransaction(ctx context.Context, icmd any) (any, error) 
 	// Determine the absolute fee of the funded transaction
 	fee := atx.TotalInput
 	for i := range tx.TxOut {
-		fee -= dcrutil.Amount(tx.TxOut[i].Value)
+		fee -= dcrutil.Amount(tx.TxOut[i].GetValue())
 	}
 
 	b := new(strings.Builder)
@@ -1112,6 +1272,7 @@ func (s *Server) getBalance(ctx context.Context, icmd any) (any, error) {
 		// If coin type is specified, filter by coin type
 		if cmd.CoinType != nil {
 			coinType := cointype.CoinType(*cmd.CoinType)
+			atomsPerCoin := getAtomsPerCoin(w.ChainParams(), coinType)
 			allBalances, err := w.AccountBalances(ctx, minConf)
 			if err != nil {
 				return nil, err
@@ -1120,6 +1281,8 @@ func (s *Server) getBalance(ctx context.Context, icmd any) (any, error) {
 			// Filter for specified coin type and convert to result format
 			result.Balances = make([]types.GetAccountBalanceResult, 0, len(allBalances))
 
+			// For SKA coins, use big.Int totals
+			isSKA := coinType.IsSKA()
 			var (
 				totImmatureCoinbase dcrutil.Amount
 				totImmatureStakegen dcrutil.Amount
@@ -1128,11 +1291,23 @@ func (s *Server) getBalance(ctx context.Context, icmd any) (any, error) {
 				totUnconfirmed      dcrutil.Amount
 				totVotingAuthority  dcrutil.Amount
 				cumTot              dcrutil.Amount
+				// SKA big.Int totals
+				skaTotImmatureCoinbase cointype.SKAAmount // For SKA emission (coinbase-like)
+				skaTotSpendable        cointype.SKAAmount
+				skaTotUnconfirmed      cointype.SKAAmount
+				skaCumTot              cointype.SKAAmount
 			)
 
 			for _, bal := range allBalances {
 				// Check if this account has balances for the requested coin type
-				if coinBal, exists := bal.CoinTypeBalances[coinType]; exists && (coinBal.Total > 0 || coinBal.Unconfirmed > 0) {
+				coinBal, exists := bal.CoinTypeBalances[coinType]
+				if !exists {
+					continue
+				}
+				// For SKA, check SKATotal instead of Total (which may be 0 for large amounts)
+				hasSKABalance := isSKA && (!coinBal.SKATotal.IsZero() || !coinBal.SKAUnconfirmed.IsZero())
+				hasVARBalance := !isSKA && (coinBal.Total > 0 || coinBal.Unconfirmed > 0)
+				if hasSKABalance || hasVARBalance {
 					accountName, err := w.AccountName(ctx, bal.Account)
 					if err != nil {
 						if errors.Is(err, errors.NotExist) {
@@ -1141,35 +1316,67 @@ func (s *Server) getBalance(ctx context.Context, icmd any) (any, error) {
 						return nil, err
 					}
 
-					totImmatureCoinbase += coinBal.ImmatureCoinbaseRewards
-					totImmatureStakegen += coinBal.ImmatureStakeGeneration
-					totLocked += coinBal.LockedByTickets
-					totSpendable += coinBal.Spendable
-					totUnconfirmed += coinBal.Unconfirmed
-					totVotingAuthority += coinBal.VotingAuthority
-					cumTot += coinBal.Total
+					if isSKA {
+						// Use SKA big.Int fields for SKA coins
+						skaTotImmatureCoinbase = skaTotImmatureCoinbase.Add(coinBal.SKAImmatureCoinbaseRewards)
+						skaTotSpendable = skaTotSpendable.Add(coinBal.SKASpendable)
+						skaTotUnconfirmed = skaTotUnconfirmed.Add(coinBal.SKAUnconfirmed)
+						skaCumTot = skaCumTot.Add(coinBal.SKATotal)
 
-					json := types.GetAccountBalanceResult{
-						AccountName:             accountName,
-						ImmatureCoinbaseRewards: coinBal.ImmatureCoinbaseRewards.ToCoin(),
-						ImmatureStakeGeneration: coinBal.ImmatureStakeGeneration.ToCoin(),
-						LockedByTickets:         coinBal.LockedByTickets.ToCoin(),
-						Spendable:               coinBal.Spendable.ToCoin(),
-						Total:                   coinBal.Total.ToCoin(),
-						Unconfirmed:             coinBal.Unconfirmed.ToCoin(),
-						VotingAuthority:         coinBal.VotingAuthority.ToCoin(),
+						// Use decimal strings for full precision SKA amounts
+						json := types.GetAccountBalanceResult{
+							AccountName:             accountName,
+							ImmatureCoinbaseRewards: coinBal.SKAImmatureCoinbaseRewards.ToDecimalString(atomsPerCoin),
+							ImmatureStakeGeneration: coinBal.SKAImmatureStakeGeneration.ToDecimalString(atomsPerCoin),
+							LockedByTickets:         "0", // SKA doesn't participate in staking
+							Spendable:               coinBal.SKASpendable.ToDecimalString(atomsPerCoin),
+							Total:                   coinBal.SKATotal.ToDecimalString(atomsPerCoin),
+							Unconfirmed:             coinBal.SKAUnconfirmed.ToDecimalString(atomsPerCoin),
+							VotingAuthority:         "0", // SKA doesn't have voting authority
+						}
+						result.Balances = append(result.Balances, json)
+					} else {
+						// Use native .ToCoin() for VAR
+						totImmatureCoinbase += coinBal.ImmatureCoinbaseRewards
+						totImmatureStakegen += coinBal.ImmatureStakeGeneration
+						totLocked += coinBal.LockedByTickets
+						totSpendable += coinBal.Spendable
+						totUnconfirmed += coinBal.Unconfirmed
+						totVotingAuthority += coinBal.VotingAuthority
+						cumTot += coinBal.Total
+
+						json := types.GetAccountBalanceResult{
+							AccountName:             accountName,
+							ImmatureCoinbaseRewards: coinBal.ImmatureCoinbaseRewards.ToCoin(),
+							ImmatureStakeGeneration: coinBal.ImmatureStakeGeneration.ToCoin(),
+							LockedByTickets:         coinBal.LockedByTickets.ToCoin(),
+							Spendable:               coinBal.Spendable.ToCoin(),
+							Total:                   coinBal.Total.ToCoin(),
+							Unconfirmed:             coinBal.Unconfirmed.ToCoin(),
+							VotingAuthority:         coinBal.VotingAuthority.ToCoin(),
+						}
+						result.Balances = append(result.Balances, json)
 					}
-					result.Balances = append(result.Balances, json)
 				}
 			}
 
-			result.TotalImmatureCoinbaseRewards = totImmatureCoinbase.ToCoin()
-			result.TotalImmatureStakeGeneration = totImmatureStakegen.ToCoin()
-			result.TotalLockedByTickets = totLocked.ToCoin()
-			result.TotalSpendable = totSpendable.ToCoin()
-			result.TotalUnconfirmed = totUnconfirmed.ToCoin()
-			result.TotalVotingAuthority = totVotingAuthority.ToCoin()
-			result.CumulativeTotal = cumTot.ToCoin()
+			if isSKA {
+				result.TotalImmatureCoinbaseRewards = skaTotImmatureCoinbase.ToDecimalString(atomsPerCoin)
+				result.TotalImmatureStakeGeneration = "0"
+				result.TotalLockedByTickets = "0"
+				result.TotalSpendable = skaTotSpendable.ToDecimalString(atomsPerCoin)
+				result.TotalUnconfirmed = skaTotUnconfirmed.ToDecimalString(atomsPerCoin)
+				result.TotalVotingAuthority = "0"
+				result.CumulativeTotal = skaCumTot.ToDecimalString(atomsPerCoin)
+			} else {
+				result.TotalImmatureCoinbaseRewards = totImmatureCoinbase.ToCoin()
+				result.TotalImmatureStakeGeneration = totImmatureStakegen.ToCoin()
+				result.TotalLockedByTickets = totLocked.ToCoin()
+				result.TotalSpendable = totSpendable.ToCoin()
+				result.TotalUnconfirmed = totUnconfirmed.ToCoin()
+				result.TotalVotingAuthority = totVotingAuthority.ToCoin()
+				result.CumulativeTotal = cumTot.ToCoin()
+			}
 
 			return result, nil
 		}
@@ -1244,20 +1451,37 @@ func (s *Server) getBalance(ctx context.Context, icmd any) (any, error) {
 		// If coin type is specified, use coin-type specific balance for single account
 		if cmd.CoinType != nil {
 			coinType := cointype.CoinType(*cmd.CoinType)
+			atomsPerCoin := getAtomsPerCoin(w.ChainParams(), coinType)
 			coinBal, err := w.AccountBalanceByCoinType(ctx, account, coinType, minConf)
 			if err != nil {
 				return nil, err
 			}
 
-			json := types.GetAccountBalanceResult{
-				AccountName:             accountName,
-				ImmatureCoinbaseRewards: coinBal.ImmatureCoinbaseRewards.ToCoin(),
-				ImmatureStakeGeneration: coinBal.ImmatureStakeGeneration.ToCoin(),
-				LockedByTickets:         coinBal.LockedByTickets.ToCoin(),
-				Spendable:               coinBal.Spendable.ToCoin(),
-				Total:                   coinBal.Total.ToCoin(),
-				Unconfirmed:             coinBal.Unconfirmed.ToCoin(),
-				VotingAuthority:         coinBal.VotingAuthority.ToCoin(),
+			var json types.GetAccountBalanceResult
+			if coinType.IsSKA() {
+				// Use decimal strings for full precision SKA amounts
+				json = types.GetAccountBalanceResult{
+					AccountName:             accountName,
+					ImmatureCoinbaseRewards: coinBal.SKAImmatureCoinbaseRewards.ToDecimalString(atomsPerCoin),
+					ImmatureStakeGeneration: coinBal.SKAImmatureStakeGeneration.ToDecimalString(atomsPerCoin),
+					LockedByTickets:         "0",
+					Spendable:               coinBal.SKASpendable.ToDecimalString(atomsPerCoin),
+					Total:                   coinBal.SKATotal.ToDecimalString(atomsPerCoin),
+					Unconfirmed:             coinBal.SKAUnconfirmed.ToDecimalString(atomsPerCoin),
+					VotingAuthority:         "0",
+				}
+			} else {
+				// Use native .ToCoin() for VAR
+				json = types.GetAccountBalanceResult{
+					AccountName:             accountName,
+					ImmatureCoinbaseRewards: coinBal.ImmatureCoinbaseRewards.ToCoin(),
+					ImmatureStakeGeneration: coinBal.ImmatureStakeGeneration.ToCoin(),
+					LockedByTickets:         coinBal.LockedByTickets.ToCoin(),
+					Spendable:               coinBal.Spendable.ToCoin(),
+					Total:                   coinBal.Total.ToCoin(),
+					Unconfirmed:             coinBal.Unconfirmed.ToCoin(),
+					VotingAuthority:         coinBal.VotingAuthority.ToCoin(),
+				}
 			}
 			result.Balances = append(result.Balances, json)
 		} else {
@@ -2390,20 +2614,21 @@ func (s *Server) createAuthorizedEmission(ctx context.Context, icmd any) (any, e
 			"emission addresses and amounts length mismatch for coin type %d", cmd.CoinType)
 	}
 
-	// Calculate and validate total amount
-	var totalAmount int64
+	// Calculate and validate total amount (using big.Int for SKA precision)
+	totalAmount := new(big.Int)
+	zero := new(big.Int)
 	for _, amount := range emissionAmounts {
-		if amount <= 0 {
+		if amount == nil || amount.Cmp(zero) <= 0 {
 			return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter,
-				"invalid emission amount %d for coin type %d", amount, cmd.CoinType)
+				"invalid emission amount %s for coin type %d", amount, cmd.CoinType)
 		}
-		totalAmount += amount
+		totalAmount.Add(totalAmount, amount)
 	}
 
-	if totalAmount != skaConfig.MaxSupply {
+	if totalAmount.Cmp(skaConfig.MaxSupply) != 0 {
 		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter,
-			"total emission amount %d does not match MaxSupply %d for coin type %d",
-			totalAmount, skaConfig.MaxSupply, cmd.CoinType)
+			"total emission amount %s does not match MaxSupply %s for coin type %d",
+			totalAmount.String(), skaConfig.MaxSupply.String(), cmd.CoinType)
 	}
 
 	// Unlock wallet for key operations
@@ -2482,7 +2707,7 @@ func (s *Server) createAuthorizedEmission(ctx context.Context, icmd any) (any, e
 		Transaction:     hex.EncodeToString(txBuf.Bytes()),
 		TransactionHash: txHash.String(),
 		Nonce:           nonce,
-		TotalAmount:     totalAmount,
+		TotalAmount:     totalAmount.String(),
 		CoinType:        cmd.CoinType,
 	}, nil
 }
@@ -2709,6 +2934,9 @@ func (s *Server) getReceivedByAddress(ctx context.Context, icmd any) (any, error
 		}
 	}
 
+	// Get the correct AtomsPerCoin for this coin type
+	atomsPerCoin := getAtomsPerCoin(w.ChainParams(), filterCoinType)
+
 	total, err := w.TotalReceivedForAddr(ctx, addr, int32(*cmd.MinConf), filterCoinType)
 	if err != nil {
 		if errors.Is(err, errors.NotExist) {
@@ -2717,7 +2945,7 @@ func (s *Server) getReceivedByAddress(ctx context.Context, icmd any) (any, error
 		return nil, err
 	}
 
-	return total.ToCoin(), nil
+	return atomsToCoins(int64(total), atomsPerCoin), nil
 }
 
 // getMasterPubkey handles a getmasterpubkey request by returning the wallet
@@ -2929,29 +3157,105 @@ func (s *Server) getTransaction(ctx context.Context, icmd any) (any, error) {
 			tipHeight))
 	}
 
-	var (
-		debitTotal  dcrutil.Amount
-		creditTotal dcrutil.Amount
-		fee         dcrutil.Amount
-		negFeeF64   float64
-	)
-	for _, deb := range txd.Debits {
-		debitTotal += deb.Amount
-	}
-	for _, cred := range txd.Credits {
-		creditTotal += cred.Amount
-	}
-	// Fee can only be determined if every input is a debit.
-	if len(txd.Debits) == len(txd.MsgTx.TxIn) {
-		var outputTotal dcrutil.Amount
-		for _, output := range txd.MsgTx.TxOut {
-			outputTotal += dcrutil.Amount(output.Value)
+	// Determine coin type from transaction outputs
+	var txCoinType cointype.CoinType
+	for _, output := range txd.MsgTx.TxOut {
+		if output.CoinType.IsSKA() {
+			txCoinType = output.CoinType
+			break
 		}
-		fee = debitTotal - outputTotal
-		negFeeF64 = (-fee).ToCoin()
 	}
-	ret.Amount = (creditTotal - debitTotal).ToCoin()
-	ret.Fee = negFeeF64
+	isSKA := txCoinType.IsSKA()
+	atomsPerCoin := getAtomsPerCoin(w.ChainParams(), txCoinType)
+
+	var (
+		debitTotal     dcrutil.Amount
+		creditTotal    dcrutil.Amount
+		skaDebitTotal  cointype.SKAAmount
+		skaCreditTotal cointype.SKAAmount
+		fee            dcrutil.Amount
+		negFeeF64      float64
+	)
+
+	// For SKA transactions, use a direct calculation approach:
+	// - Credits = outputs that belong to the wallet (in txd.Credits)
+	// - Debits = either from database or calculated from inputs
+	// - Net = Credits - Debits (negative for sends, positive for receives)
+	if isSKA {
+		// Calculate credits directly from outputs that are in txd.Credits
+		for _, cred := range txd.Credits {
+			if int(cred.Index) < len(txd.MsgTx.TxOut) {
+				output := txd.MsgTx.TxOut[cred.Index]
+				if output.SKAValue != nil && output.SKAValue.Sign() > 0 {
+					skaCreditTotal = skaCreditTotal.Add(cointype.NewSKAAmount(output.SKAValue))
+				}
+			}
+		}
+
+		// Calculate debits: sum of all inputs from wallet (previous outputs being spent)
+		// First try from database, then look up previous transactions
+		for _, deb := range txd.Debits {
+			if !deb.SKAAmount.IsZero() {
+				skaDebitTotal = skaDebitTotal.Add(deb.SKAAmount)
+			} else if int(deb.Index) < len(txd.MsgTx.TxIn) {
+				// Look up the previous transaction's output to get the actual SKA amount
+				prevOut := &txd.MsgTx.TxIn[deb.Index].PreviousOutPoint
+				prevHash := prevOut.Hash
+				prevTxs, _, err := w.GetTransactionsByHashes(ctx, []*chainhash.Hash{&prevHash})
+				if err == nil && len(prevTxs) > 0 && prevTxs[0] != nil {
+					if int(prevOut.Index) < len(prevTxs[0].TxOut) {
+						out := prevTxs[0].TxOut[prevOut.Index]
+						if out.SKAValue != nil && out.SKAValue.Sign() > 0 {
+							skaDebitTotal = skaDebitTotal.Add(cointype.NewSKAAmount(out.SKAValue))
+						}
+					}
+				}
+			}
+		}
+
+		// For SKA, use output-based calculation which is more reliable
+		// especially for unmined transactions where credits may not be populated yet.
+		// For a send: Amount = -(outputs NOT to our wallet)
+		// For a receive: Amount = (outputs TO our wallet that are credits)
+
+		// Calculate fee if all inputs are debits and we have debit values
+		var skaFee cointype.SKAAmount
+		if len(txd.Debits) == len(txd.MsgTx.TxIn) && !skaDebitTotal.IsZero() {
+			var skaOutputTotal cointype.SKAAmount
+			for _, output := range txd.MsgTx.TxOut {
+				if output.SKAValue != nil {
+					skaOutputTotal = skaOutputTotal.Add(cointype.NewSKAAmount(output.SKAValue))
+				}
+			}
+			skaFee = skaDebitTotal.Sub(skaOutputTotal)
+			ret.Fee = skaFee.Neg().ToDecimalString(atomsPerCoin)
+		}
+
+		// Amount = credits - debits (same formula as VAR)
+		// For mined transactions: credits are populated, so this gives correct net change
+		// For unmined transactions: credits = 0, so this gives -debits (total spent)
+		skaNet := skaCreditTotal.Sub(skaDebitTotal)
+		ret.Amount = skaNet.ToDecimalString(atomsPerCoin)
+	} else {
+		// VAR transaction handling (unchanged)
+		for _, deb := range txd.Debits {
+			debitTotal += deb.Amount
+		}
+		for _, cred := range txd.Credits {
+			creditTotal += cred.Amount
+		}
+		// Fee can only be determined if every input is a debit.
+		if len(txd.Debits) == len(txd.MsgTx.TxIn) {
+			var outputTotal dcrutil.Amount
+			for _, output := range txd.MsgTx.TxOut {
+				outputTotal += dcrutil.Amount(output.Value)
+			}
+			fee = debitTotal - outputTotal
+			negFeeF64 = (-fee).ToCoin()
+		}
+		ret.Amount = (creditTotal - debitTotal).ToCoin()
+		ret.Fee = negFeeF64
+	}
 
 	details, err := w.ListTransactionDetails(ctx, txHash)
 	if err != nil {
@@ -3939,12 +4243,55 @@ func makeOutputsWithCoinType(pairs map[string]dcrutil.Amount, chainParams *chain
 
 		vers, pkScript := addr.PaymentScript()
 
-		outputs = append(outputs, &wire.TxOut{
-			Value:    int64(amt),
+		txOut := &wire.TxOut{
 			PkScript: pkScript,
 			Version:  vers,
 			CoinType: coinType, // Dual-coin support: specify coin type
-		})
+		}
+
+		// For SKA, use SKAValue (big.Int); for VAR, use Value (int64)
+		if coinType.IsSKA() {
+			txOut.Value = 0 // SKA uses SKAValue, not Value
+			txOut.SKAValue = big.NewInt(int64(amt))
+		} else {
+			txOut.Value = int64(amt)
+		}
+
+		outputs = append(outputs, txOut)
+	}
+	return outputs, nil
+}
+
+// makeOutputsWithCoinTypeBig creates transaction outputs with specified coin type using big.Int amounts.
+// This is essential for SKA transactions where amounts can exceed int64.
+func makeOutputsWithCoinTypeBig(pairs map[string]*big.Int, chainParams *chaincfg.Params, coinType cointype.CoinType) ([]*wire.TxOut, error) {
+	outputs := make([]*wire.TxOut, 0, len(pairs))
+	for addrStr, amt := range pairs {
+		if amt == nil || amt.Sign() < 0 {
+			return nil, errNeedPositiveAmount
+		}
+		addr, err := decodeAddress(addrStr, chainParams)
+		if err != nil {
+			return nil, err
+		}
+
+		vers, pkScript := addr.PaymentScript()
+
+		txOut := &wire.TxOut{
+			PkScript: pkScript,
+			Version:  vers,
+			CoinType: coinType,
+		}
+
+		// For SKA, use SKAValue (big.Int); for VAR, use Value (int64)
+		if coinType.IsSKA() {
+			txOut.Value = 0 // SKA uses SKAValue, not Value
+			txOut.SKAValue = new(big.Int).Set(amt)
+		} else {
+			txOut.Value = amt.Int64()
+		}
+
+		outputs = append(outputs, txOut)
 	}
 	return outputs, nil
 }
@@ -4003,6 +4350,43 @@ func (s *Server) sendPairsWithCoinType(ctx context.Context, w *wallet.Wallet, am
 	}
 
 	outputs, err := makeOutputsWithCoinType(amounts, w.ChainParams(), coinType)
+	if err != nil {
+		return "", err
+	}
+
+	// Use existing SendOutputs method (coin type is embedded in outputs)
+	txSha, err := w.SendOutputs(ctx, outputs, account, changeAccount, minconf)
+	if err != nil {
+		if errors.Is(err, errors.Locked) {
+			return "", errWalletUnlockNeeded
+		}
+		if errors.Is(err, errors.InsufficientBalance) {
+			return "", rpcError(dcrjson.ErrRPCWalletInsufficientFunds, err)
+		}
+		return "", err
+	}
+
+	return txSha.String(), nil
+}
+
+// sendPairsWithCoinTypeBig creates and sends payment transactions with coin type support using big.Int amounts.
+// This is essential for SKA transactions where amounts can exceed int64.
+func (s *Server) sendPairsWithCoinTypeBig(ctx context.Context, w *wallet.Wallet, amounts map[string]*big.Int, account uint32, minconf int32, coinType cointype.CoinType) (string, error) {
+	changeAccount := account
+	if s.cfg.MixingEnabled && s.cfg.MixAccount != "" && s.cfg.MixChangeAccount != "" {
+		mixAccount, err := w.AccountNumber(ctx, s.cfg.MixAccount)
+		if err != nil {
+			return "", err
+		}
+		if account == mixAccount {
+			changeAccount, err = w.AccountNumber(ctx, s.cfg.MixChangeAccount)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+
+	outputs, err := makeOutputsWithCoinTypeBig(amounts, w.ChainParams(), coinType)
 	if err != nil {
 		return "", err
 	}
@@ -4907,23 +5291,39 @@ func (s *Server) sendFrom(ctx context.Context, icmd any) (any, error) {
 		return nil, err
 	}
 
-	// Check that signed integer parameters are positive.
-	if cmd.Amount < 0 {
+	// Check that amount is not negative
+	if strings.HasPrefix(cmd.Amount, "-") {
 		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "negative amount")
 	}
 	minConf := int32(*cmd.MinConf)
 	if minConf < 0 {
 		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "negative minconf")
 	}
-	// Create map of address and amount pairs.
-	amt, err := dcrutil.NewAmount(cmd.Amount)
-	if err != nil {
-		return nil, rpcError(dcrjson.ErrRPCInvalidParameter, err)
+
+	// Convert coins to atoms using the correct AtomsPerCoin for this coin type
+	atomsPerCoin := getAtomsPerCoin(w.ChainParams(), coinType)
+
+	// For SKA transactions (coinType > 0), use big.Int to avoid int64 overflow
+	if coinType.IsSKA() {
+		amtBig, err := coinsToAtomsBig(cmd.Amount, atomsPerCoin)
+		if err != nil {
+			return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "invalid amount: %v", err)
+		}
+		pairsBig := map[string]*big.Int{
+			cmd.ToAddress: amtBig,
+		}
+		return s.sendPairsWithCoinTypeBig(ctx, w, pairsBig, account, minConf, coinType)
 	}
+
+	// For VAR (coinType == 0), parse string to float64 and use standard int64 path
+	amtFloat, err := strconv.ParseFloat(cmd.Amount, 64)
+	if err != nil {
+		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "invalid amount: %v", err)
+	}
+	amt := dcrutil.Amount(coinsToAtoms(amtFloat, atomsPerCoin))
 	pairs := map[string]dcrutil.Amount{
 		cmd.ToAddress: amt,
 	}
-
 	return s.sendPairsWithCoinType(ctx, w, pairs, account, minConf, coinType)
 }
 
@@ -4932,11 +5332,21 @@ func (s *Server) sendFrom(ctx context.Context, icmd any) (any, error) {
 // payment addresses.  Leftover inputs not sent to the payment address
 // or a fee for the miner are sent back to a new address in the wallet.
 // Upon success, the TxID for the created transaction is returned.
+// Supports optional coin type for dual-coin operations.
 func (s *Server) sendMany(ctx context.Context, icmd any) (any, error) {
 	cmd := icmd.(*types.SendManyCmd)
 	w, ok := s.walletLoader.LoadedWallet()
 	if !ok {
 		return nil, errUnloadedWallet
+	}
+
+	// Validate coin type if specified
+	var coinType cointype.CoinType = cointype.CoinTypeVAR // Default to VAR for backward compatibility
+	if cmd.CoinType != nil {
+		coinType = cointype.CoinType(*cmd.CoinType)
+		if err := validateCoinType(coinType); err != nil {
+			return nil, err
+		}
 	}
 
 	// Transaction comments are not yet supported.  Error instead of
@@ -4956,17 +5366,33 @@ func (s *Server) sendMany(ctx context.Context, icmd any) (any, error) {
 		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "negative minconf")
 	}
 
-	// Recreate address/amount pairs, using dcrutil.Amount.
-	pairs := make(map[string]dcrutil.Amount, len(cmd.Amounts))
-	for k, v := range cmd.Amounts {
-		amt, err := dcrutil.NewAmount(v)
-		if err != nil {
-			return nil, rpcError(dcrjson.ErrRPCInvalidParameter, err)
+	// Get the correct AtomsPerCoin for this coin type
+	atomsPerCoin := getAtomsPerCoin(w.ChainParams(), coinType)
+
+	// For SKA transactions (coinType > 0), use big.Int to avoid int64 overflow
+	if coinType.IsSKA() {
+		pairsBig := make(map[string]*big.Int, len(cmd.Amounts))
+		for k, v := range cmd.Amounts {
+			amtBig, err := coinsToAtomsBig(v, atomsPerCoin)
+			if err != nil {
+				return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "invalid amount for %s: %v", k, err)
+			}
+			pairsBig[k] = amtBig
 		}
-		pairs[k] = amt
+		return s.sendPairsWithCoinTypeBig(ctx, w, pairsBig, account, minConf, coinType)
 	}
 
-	return s.sendPairs(ctx, w, pairs, account, minConf)
+	// For VAR (coinType == 0), parse string amounts to float64 and use standard int64 path
+	pairs := make(map[string]dcrutil.Amount, len(cmd.Amounts))
+	for k, v := range cmd.Amounts {
+		amtFloat, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "invalid amount for %s: %v", k, err)
+		}
+		amt := dcrutil.Amount(coinsToAtoms(amtFloat, atomsPerCoin))
+		pairs[k] = amt
+	}
+	return s.sendPairsWithCoinType(ctx, w, pairs, account, minConf, coinType)
 }
 
 // sendToAddress handles a sendtoaddress RPC request by creating a new
@@ -4996,21 +5422,36 @@ func (s *Server) sendToAddress(ctx context.Context, icmd any) (any, error) {
 		return nil, rpcErrorf(dcrjson.ErrRPCUnimplemented, "transaction comments are unsupported")
 	}
 
-	amt, err := dcrutil.NewAmount(cmd.Amount)
-	if err != nil {
-		return nil, err
-	}
+	// Convert coins to atoms using the correct AtomsPerCoin for this coin type
+	atomsPerCoin := getAtomsPerCoin(w.ChainParams(), coinType)
 
-	// Check that signed integer parameters are positive.
-	if amt < 0 {
+	// Check that amount is not negative
+	if strings.HasPrefix(cmd.Amount, "-") {
 		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "negative amount")
 	}
 
-	// Mock up map of address and amount pairs.
+	// For SKA transactions (coinType > 0), use big.Int to avoid int64 overflow
+	if coinType.IsSKA() {
+		amtBig, err := coinsToAtomsBig(cmd.Amount, atomsPerCoin)
+		if err != nil {
+			return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "invalid amount: %v", err)
+		}
+		pairsBig := map[string]*big.Int{
+			cmd.Address: amtBig,
+		}
+		// sendtoaddress always spends from the default account, this matches bitcoind
+		return s.sendPairsWithCoinTypeBig(ctx, w, pairsBig, udb.DefaultAccountNum, 1, coinType)
+	}
+
+	// For VAR (coinType == 0), parse string to float64 and use standard int64 path
+	amtFloat, err := strconv.ParseFloat(cmd.Amount, 64)
+	if err != nil {
+		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "invalid amount: %v", err)
+	}
+	amt := dcrutil.Amount(coinsToAtoms(amtFloat, atomsPerCoin))
 	pairs := map[string]dcrutil.Amount{
 		cmd.Address: amt,
 	}
-
 	// sendtoaddress always spends from the default account, this matches bitcoind
 	return s.sendPairsWithCoinType(ctx, w, pairs, udb.DefaultAccountNum, 1, coinType)
 }
@@ -5162,12 +5603,21 @@ func (s *Server) sendToBurn(ctx context.Context, icmd any) (any, error) {
 			"cannot burn VAR coins (coin type 0); only SKA coins (1-255) can be burned")
 	}
 
-	// Parse and validate amount
-	amt, err := dcrutil.NewAmount(cmd.Amount)
+	// Get chain params for AtomsPerCoin
+	params := w.ChainParams()
+
+	// Parse and validate amount - must be positive
+	if cmd.Amount == "" || strings.HasPrefix(cmd.Amount, "-") || cmd.Amount == "0" {
+		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "amount must be positive")
+	}
+
+	// Convert coin amount to atoms using SKA's AtomsPerCoin (typically 1e18)
+	atomsPerCoin := getAtomsPerCoin(params, coinType)
+	skaAtoms, err := coinsToAtomsBig(cmd.Amount, atomsPerCoin)
 	if err != nil {
 		return nil, rpcError(dcrjson.ErrRPCInvalidParameter, err)
 	}
-	if amt <= 0 {
+	if skaAtoms.Sign() <= 0 {
 		return nil, rpcErrorf(dcrjson.ErrRPCInvalidParameter, "amount must be positive")
 	}
 
@@ -5185,16 +5635,17 @@ func (s *Server) sendToBurn(ctx context.Context, icmd any) (any, error) {
 	}
 
 	// Create the burn script for this coin type
-	params := w.ChainParams()
 	burnScript, err := params.CreateSKABurnScript(coinType)
 	if err != nil {
 		return nil, rpcError(dcrjson.ErrRPCInvalidParameter, err)
 	}
 
 	// Create the burn output with coin type and burn script
+	// SKA outputs use SKAValue (big.Int) instead of Value (int64)
 	outputs := []*wire.TxOut{
 		{
-			Value:    int64(amt),
+			Value:    0, // SKA outputs must have Value=0
+			SKAValue: skaAtoms,
 			CoinType: coinType,
 			Version:  wire.DefaultPkScriptVersion,
 			PkScript: burnScript,
@@ -6377,6 +6828,9 @@ func (s *Server) getCoinBalance(ctx context.Context, icmd any) (any, error) {
 		return nil, err
 	}
 
+	// Get AtomsPerCoin for the specified coin type
+	atomsPerCoin := getAtomsPerCoin(w.ChainParams(), coinType)
+
 	accountName := "*"
 	if cmd.Account != nil {
 		accountName = *cmd.Account
@@ -6400,13 +6854,13 @@ func (s *Server) getCoinBalance(ctx context.Context, icmd any) (any, error) {
 		result := types.GetCoinBalanceResult{
 			CoinType:                     uint8(coinType),
 			BlockHash:                    blockHash.String(),
-			TotalImmatureCoinbaseRewards: totalBalance.ImmatureCoinbaseRewards.ToCoin(),
-			TotalImmatureStakeGeneration: totalBalance.ImmatureStakeGeneration.ToCoin(),
-			TotalLockedByTickets:         totalBalance.LockedByTickets.ToCoin(),
-			TotalSpendable:               totalBalance.Spendable.ToCoin(),
-			TotalUnconfirmed:             totalBalance.Unconfirmed.ToCoin(),
-			TotalVotingAuthority:         totalBalance.VotingAuthority.ToCoin(),
-			CumulativeTotal:              totalBalance.Total.ToCoin(),
+			TotalImmatureCoinbaseRewards: atomsToCoins(int64(totalBalance.ImmatureCoinbaseRewards), atomsPerCoin),
+			TotalImmatureStakeGeneration: atomsToCoins(int64(totalBalance.ImmatureStakeGeneration), atomsPerCoin),
+			TotalLockedByTickets:         atomsToCoins(int64(totalBalance.LockedByTickets), atomsPerCoin),
+			TotalSpendable:               atomsToCoins(int64(totalBalance.Spendable), atomsPerCoin),
+			TotalUnconfirmed:             atomsToCoins(int64(totalBalance.Unconfirmed), atomsPerCoin),
+			TotalVotingAuthority:         atomsToCoins(int64(totalBalance.VotingAuthority), atomsPerCoin),
+			CumulativeTotal:              atomsToCoins(int64(totalBalance.Total), atomsPerCoin),
 		}
 
 		// Add per-account breakdown
@@ -6424,13 +6878,13 @@ func (s *Server) getCoinBalance(ctx context.Context, icmd any) (any, error) {
 				result.Balances = append(result.Balances, types.GetCoinAccountBalanceResult{
 					AccountName:             accountName,
 					CoinType:                uint8(coinType),
-					ImmatureCoinbaseRewards: coinBalance.ImmatureCoinbaseRewards.ToCoin(),
-					ImmatureStakeGeneration: coinBalance.ImmatureStakeGeneration.ToCoin(),
-					LockedByTickets:         coinBalance.LockedByTickets.ToCoin(),
-					Spendable:               coinBalance.Spendable.ToCoin(),
-					Total:                   coinBalance.Total.ToCoin(),
-					Unconfirmed:             coinBalance.Unconfirmed.ToCoin(),
-					VotingAuthority:         coinBalance.VotingAuthority.ToCoin(),
+					ImmatureCoinbaseRewards: atomsToCoins(int64(coinBalance.ImmatureCoinbaseRewards), atomsPerCoin),
+					ImmatureStakeGeneration: atomsToCoins(int64(coinBalance.ImmatureStakeGeneration), atomsPerCoin),
+					LockedByTickets:         atomsToCoins(int64(coinBalance.LockedByTickets), atomsPerCoin),
+					Spendable:               atomsToCoins(int64(coinBalance.Spendable), atomsPerCoin),
+					Total:                   atomsToCoins(int64(coinBalance.Total), atomsPerCoin),
+					Unconfirmed:             atomsToCoins(int64(coinBalance.Unconfirmed), atomsPerCoin),
+					VotingAuthority:         atomsToCoins(int64(coinBalance.VotingAuthority), atomsPerCoin),
 				})
 			}
 		}
@@ -6454,23 +6908,23 @@ func (s *Server) getCoinBalance(ctx context.Context, icmd any) (any, error) {
 		result := types.GetCoinBalanceResult{
 			CoinType:                     uint8(coinType),
 			BlockHash:                    blockHash.String(),
-			TotalImmatureCoinbaseRewards: coinBalance.ImmatureCoinbaseRewards.ToCoin(),
-			TotalImmatureStakeGeneration: coinBalance.ImmatureStakeGeneration.ToCoin(),
-			TotalLockedByTickets:         coinBalance.LockedByTickets.ToCoin(),
-			TotalSpendable:               coinBalance.Spendable.ToCoin(),
-			TotalUnconfirmed:             coinBalance.Unconfirmed.ToCoin(),
-			TotalVotingAuthority:         coinBalance.VotingAuthority.ToCoin(),
-			CumulativeTotal:              coinBalance.Total.ToCoin(),
+			TotalImmatureCoinbaseRewards: atomsToCoins(int64(coinBalance.ImmatureCoinbaseRewards), atomsPerCoin),
+			TotalImmatureStakeGeneration: atomsToCoins(int64(coinBalance.ImmatureStakeGeneration), atomsPerCoin),
+			TotalLockedByTickets:         atomsToCoins(int64(coinBalance.LockedByTickets), atomsPerCoin),
+			TotalSpendable:               atomsToCoins(int64(coinBalance.Spendable), atomsPerCoin),
+			TotalUnconfirmed:             atomsToCoins(int64(coinBalance.Unconfirmed), atomsPerCoin),
+			TotalVotingAuthority:         atomsToCoins(int64(coinBalance.VotingAuthority), atomsPerCoin),
+			CumulativeTotal:              atomsToCoins(int64(coinBalance.Total), atomsPerCoin),
 			Balances: []types.GetCoinAccountBalanceResult{{
 				AccountName:             accountName,
 				CoinType:                uint8(coinType),
-				ImmatureCoinbaseRewards: coinBalance.ImmatureCoinbaseRewards.ToCoin(),
-				ImmatureStakeGeneration: coinBalance.ImmatureStakeGeneration.ToCoin(),
-				LockedByTickets:         coinBalance.LockedByTickets.ToCoin(),
-				Spendable:               coinBalance.Spendable.ToCoin(),
-				Total:                   coinBalance.Total.ToCoin(),
-				Unconfirmed:             coinBalance.Unconfirmed.ToCoin(),
-				VotingAuthority:         coinBalance.VotingAuthority.ToCoin(),
+				ImmatureCoinbaseRewards: atomsToCoins(int64(coinBalance.ImmatureCoinbaseRewards), atomsPerCoin),
+				ImmatureStakeGeneration: atomsToCoins(int64(coinBalance.ImmatureStakeGeneration), atomsPerCoin),
+				LockedByTickets:         atomsToCoins(int64(coinBalance.LockedByTickets), atomsPerCoin),
+				Spendable:               atomsToCoins(int64(coinBalance.Spendable), atomsPerCoin),
+				Total:                   atomsToCoins(int64(coinBalance.Total), atomsPerCoin),
+				Unconfirmed:             atomsToCoins(int64(coinBalance.Unconfirmed), atomsPerCoin),
+				VotingAuthority:         atomsToCoins(int64(coinBalance.VotingAuthority), atomsPerCoin),
 			}},
 		}
 
@@ -6512,6 +6966,9 @@ func (s *Server) listCoinTypes(ctx context.Context, icmd any) (any, error) {
 			return nil, err
 		}
 
+		// Get the correct AtomsPerCoin for this coin type
+		atomsPerCoin := getAtomsPerCoin(w.ChainParams(), coinType)
+
 		// Generate human-readable name
 		var name string
 		if coinType == cointype.CoinTypeVAR {
@@ -6520,10 +6977,18 @@ func (s *Server) listCoinTypes(ctx context.Context, icmd any) (any, error) {
 			name = fmt.Sprintf("SKA-%d", coinType)
 		}
 
+		// Use SKA big.Int fields for SKA coins (string for precision), int64 fields for VAR (float64)
+		var balanceValue interface{}
+		if coinType.IsSKA() {
+			balanceValue = balance.SKASpendable.ToDecimalString(atomsPerCoin)
+		} else {
+			balanceValue = atomsToCoins(int64(balance.Spendable), atomsPerCoin)
+		}
+
 		info := types.CoinTypeInfo{
 			CoinType: uint8(coinType),
 			Name:     name,
-			Balance:  balance.Spendable.ToCoin(),
+			Balance:  balanceValue,
 		}
 
 		result.CoinTypes = append(result.CoinTypes, info)
@@ -6609,7 +7074,7 @@ func createEmissionAuthHashFromTx(tx *wire.MsgTx, auth *chaincfg.SKAEmissionAuth
 // The transaction will be signed separately after creation to bind the signature
 // to the transaction hash (preventing miner redirect attacks).
 func createUnsignedSKAEmissionTransaction(auth *chaincfg.SKAEmissionAuth,
-	emissionAddresses []string, amounts []int64, chainParams *chaincfg.Params) (*wire.MsgTx, error) {
+	emissionAddresses []string, amounts []*big.Int, chainParams *chaincfg.Params) (*wire.MsgTx, error) {
 
 	// Validate authorization structure
 	if auth == nil {
@@ -6654,18 +7119,19 @@ func createUnsignedSKAEmissionTransaction(auth *chaincfg.SKAEmissionAuth,
 		return nil, fmt.Errorf("no emission addresses specified")
 	}
 
-	var totalAmount int64
+	zero := new(big.Int)
+	totalAmount := new(big.Int)
 	for _, amount := range amounts {
-		if amount <= 0 {
-			return nil, fmt.Errorf("invalid emission amount: %d", amount)
+		if amount == nil || amount.Cmp(zero) <= 0 {
+			return nil, fmt.Errorf("invalid emission amount: %s", amount)
 		}
-		totalAmount += amount
+		totalAmount.Add(totalAmount, amount)
 	}
 
 	// Verify total matches authorization
-	if totalAmount != auth.Amount {
-		return nil, fmt.Errorf("total emission amount %d does not match authorization %d",
-			totalAmount, auth.Amount)
+	if totalAmount.Cmp(auth.Amount) != 0 {
+		return nil, fmt.Errorf("total emission amount %s does not match authorization %s",
+			totalAmount.String(), auth.Amount.String())
 	}
 
 	// Get the SKA coin config for this coin type and validate emission window
@@ -6725,8 +7191,10 @@ func createUnsignedSKAEmissionTransaction(auth *chaincfg.SKAEmissionAuth,
 		_, pkScript := addr.PaymentScript()
 
 		// Add SKA output with specific coin type
+		// SKA coins use SKAValue (big.Int) for amounts
 		tx.TxOut = append(tx.TxOut, &wire.TxOut{
-			Value:    amounts[i],
+			Value:    0,             // Not used for SKA
+			SKAValue: amounts[i],    // SKA uses big.Int for amounts
 			CoinType: auth.CoinType, // Use authorized coin type
 			Version:  0,
 			PkScript: pkScript,
@@ -6737,15 +7205,16 @@ func createUnsignedSKAEmissionTransaction(auth *chaincfg.SKAEmissionAuth,
 }
 
 // createEmissionAuthScript creates the authorization script for SKA emission input.
-// Format: [SKA_marker:4][auth_version:1][nonce:8][coin_type:1][amount:8][height:8][pubkey:33][sig_len:1][signature:var]
+// Format v3 (for big.Int amounts):
+// [SKA_marker:4][auth_version:1][nonce:8][coin_type:1][amount_len:1][amount:N][height:8][pubkey:33][sig_len:1][signature:var]
 func createEmissionAuthScript(auth *chaincfg.SKAEmissionAuth) ([]byte, error) {
 	var script bytes.Buffer
 
 	// Standard SKA emission marker
 	script.Write([]byte{0x01, 0x53, 0x4b, 0x41}) // "SKA" marker
 
-	// Authorization data
-	script.WriteByte(0x02) // Auth version
+	// Authorization data - version 0x03 for big.Int amounts
+	script.WriteByte(0x03) // Auth version 3
 
 	// Nonce (8 bytes)
 	nonceBytes := make([]byte, 8)
@@ -6755,12 +7224,16 @@ func createEmissionAuthScript(auth *chaincfg.SKAEmissionAuth) ([]byte, error) {
 	// Coin type (1 byte)
 	script.WriteByte(uint8(auth.CoinType))
 
-	// Amount (8 bytes) - NEW FIELD
-	amountBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(amountBytes, uint64(auth.Amount))
+	// Amount (variable length big.Int)
+	// Write length prefix (1 byte) followed by big-endian bytes
+	amountBytes := auth.Amount.Bytes() // Big-endian representation
+	if len(amountBytes) > 255 {
+		return nil, fmt.Errorf("amount too large: %d bytes (max 255)", len(amountBytes))
+	}
+	script.WriteByte(uint8(len(amountBytes)))
 	script.Write(amountBytes)
 
-	// Height (8 bytes) - NEW FIELD
+	// Height (8 bytes)
 	heightBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(heightBytes, uint64(auth.Height))
 	script.Write(heightBytes)

@@ -24,6 +24,7 @@ import (
 type CreditRecord struct {
 	Index      uint32
 	Amount     dcrutil.Amount
+	SKAAmount  cointype.SKAAmount // Big.Int amount for SKA (use when CoinType.IsSKA())
 	Spent      bool
 	Change     bool
 	OpCode     uint8
@@ -36,9 +37,10 @@ type CreditRecord struct {
 // transaction.  Further details may be looked up by indexing a wire.MsgTx.TxIn
 // with the Index field.
 type DebitRecord struct {
-	Amount   dcrutil.Amount
-	Index    uint32
-	CoinType cointype.CoinType // Added for dual-coin support: tracks spent coin type
+	Amount    dcrutil.Amount
+	SKAAmount cointype.SKAAmount // Big.Int amount for SKA (use when CoinType.IsSKA())
+	Index     uint32
+	CoinType  cointype.CoinType // Added for dual-coin support: tracks spent coin type
 }
 
 // TxDetails is intended to provide callers with access to rich details
@@ -151,10 +153,17 @@ func (s *Store) unminedTxDetails(ns walletdb.ReadBucket, txHash *chainhash.Hash,
 			if err != nil {
 				return nil, err
 			}
+			ct := fetchRawCreditCoinType(v)
+			var skaAmt cointype.SKAAmount
+			if ct.IsSKA() {
+				skaAmt = fetchSKACreditAmount(ns, credKey)
+			}
 
 			details.Debits = append(details.Debits, DebitRecord{
-				Amount: amount,
-				Index:  uint32(i),
+				Amount:    amount,
+				SKAAmount: skaAmt,
+				Index:     uint32(i),
+				CoinType:  ct,
 			})
 			continue
 		}
@@ -168,9 +177,17 @@ func (s *Store) unminedTxDetails(ns walletdb.ReadBucket, txHash *chainhash.Hash,
 		if err != nil {
 			return nil, err
 		}
+		ct := fetchRawUnminedCreditCoinType(v)
+		var skaAmt cointype.SKAAmount
+		if ct.IsSKA() {
+			skaAmt = fetchSKAUnminedCreditAmount(ns, opKey)
+		}
+
 		details.Debits = append(details.Debits, DebitRecord{
-			Amount: amount,
-			Index:  uint32(i),
+			Amount:    amount,
+			SKAAmount: skaAmt,
+			Index:     uint32(i),
+			CoinType:  ct,
 		})
 	}
 

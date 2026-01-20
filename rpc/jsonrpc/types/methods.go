@@ -967,8 +967,8 @@ type RescanWalletCmd struct {
 type SendFromCmd struct {
 	FromAccount string
 	ToAddress   string
-	Amount      float64 // In DCR
-	MinConf     *int    `jsonrpcdefault:"1"`
+	Amount      string // Coin amount as string (preserves precision for SKA)
+	MinConf     *int   `jsonrpcdefault:"1"`
 	Comment     *string
 	CommentTo   *string
 	CoinType    *uint8 `json:"cointype,omitempty"` // Optional: specify coin type (0=VAR, 1-255=SKA)
@@ -979,7 +979,7 @@ type SendFromCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewSendFromCmd(fromAccount, toAddress string, amount float64, minConf *int, comment, commentTo *string) *SendFromCmd {
+func NewSendFromCmd(fromAccount, toAddress, amount string, minConf *int, comment, commentTo *string) *SendFromCmd {
 	return &SendFromCmd{
 		FromAccount: fromAccount,
 		ToAddress:   toAddress,
@@ -991,7 +991,7 @@ func NewSendFromCmd(fromAccount, toAddress string, amount float64, minConf *int,
 }
 
 // NewSendFromCmdWithCoinType returns a new SendFromCmd with coin type specified.
-func NewSendFromCmdWithCoinType(fromAccount, toAddress string, amount float64, minConf *int, comment, commentTo *string, coinType *uint8) *SendFromCmd {
+func NewSendFromCmdWithCoinType(fromAccount, toAddress, amount string, minConf *int, comment, commentTo *string, coinType *uint8) *SendFromCmd {
 	return &SendFromCmd{
 		FromAccount: fromAccount,
 		ToAddress:   toAddress,
@@ -1005,11 +1005,11 @@ func NewSendFromCmdWithCoinType(fromAccount, toAddress string, amount float64, m
 
 // SendManyCmd defines the sendmany JSON-RPC command.
 type SendManyCmd struct {
-	FromAccount string             `json:"fromaccount"`
-	Amounts     map[string]float64 `json:"amounts" jsonrpcusage:"{\"address\":amount,...}"` // In DCR
-	MinConf     *int               `json:"minconf" jsonrpcdefault:"1"`
-	Comment     *string            `json:"comment,omitempty"`
-	CoinType    *uint8             `json:"cointype,omitempty"` // Optional: specify coin type (0=VAR, 1-255=SKA)
+	FromAccount string            `json:"fromaccount"`
+	Amounts     map[string]string `json:"amounts" jsonrpcusage:"{\"address\":\"amount\",...}"` // Amounts as strings (preserves precision for SKA)
+	MinConf     *int              `json:"minconf" jsonrpcdefault:"1"`
+	Comment     *string           `json:"comment,omitempty"`
+	CoinType    *uint8            `json:"cointype,omitempty"` // Optional: specify coin type (0=VAR, 1-255=SKA)
 }
 
 // NewSendManyCmd returns a new instance which can be used to issue a sendmany
@@ -1017,7 +1017,7 @@ type SendManyCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewSendManyCmd(fromAccount string, amounts map[string]float64, minConf *int, comment *string) *SendManyCmd {
+func NewSendManyCmd(fromAccount string, amounts map[string]string, minConf *int, comment *string) *SendManyCmd {
 	return &SendManyCmd{
 		FromAccount: fromAccount,
 		Amounts:     amounts,
@@ -1027,7 +1027,7 @@ func NewSendManyCmd(fromAccount string, amounts map[string]float64, minConf *int
 }
 
 // NewSendManyCmdWithCoinType returns a new SendManyCmd with coin type specified.
-func NewSendManyCmdWithCoinType(fromAccount string, amounts map[string]float64, minConf *int, comment *string, coinType *uint8) *SendManyCmd {
+func NewSendManyCmdWithCoinType(fromAccount string, amounts map[string]string, minConf *int, comment *string, coinType *uint8) *SendManyCmd {
 	return &SendManyCmd{
 		FromAccount: fromAccount,
 		Amounts:     amounts,
@@ -1040,7 +1040,7 @@ func NewSendManyCmdWithCoinType(fromAccount string, amounts map[string]float64, 
 // SendToAddressCmd defines the sendtoaddress JSON-RPC command.
 type SendToAddressCmd struct {
 	Address   string  `json:"address"`
-	Amount    float64 `json:"amount"`
+	Amount    string  `json:"amount"` // Coin amount as string (preserves precision for SKA)
 	Comment   *string `json:"comment,omitempty"`
 	CommentTo *string `json:"commentto,omitempty"`
 	CoinType  *uint8  `json:"cointype,omitempty"` // Optional: specify coin type (0=VAR, 1-255=SKA)
@@ -1051,7 +1051,7 @@ type SendToAddressCmd struct {
 //
 // The parameters which are pointers indicate they are optional.  Passing nil
 // for optional parameters will use the default value.
-func NewSendToAddressCmd(address string, amount float64, comment, commentTo *string) *SendToAddressCmd {
+func NewSendToAddressCmd(address, amount string, comment, commentTo *string) *SendToAddressCmd {
 	return &SendToAddressCmd{
 		Address:   address,
 		Amount:    amount,
@@ -1061,7 +1061,7 @@ func NewSendToAddressCmd(address string, amount float64, comment, commentTo *str
 }
 
 // NewSendToAddressCmdWithCoinType returns a new SendToAddressCmd with coin type specified.
-func NewSendToAddressCmdWithCoinType(address string, amount float64, comment, commentTo *string, coinType *uint8) *SendToAddressCmd {
+func NewSendToAddressCmdWithCoinType(address, amount string, comment, commentTo *string, coinType *uint8) *SendToAddressCmd {
 	return &SendToAddressCmd{
 		Address:   address,
 		Amount:    amount,
@@ -1126,7 +1126,7 @@ func NewSendFromTreasuryCmd(pubkey string, amounts map[string]float64) *SendFrom
 // SendToBurnCmd defines the sendtoburn JSON-RPC command for permanently
 // burning SKA coins.
 type SendToBurnCmd struct {
-	Amount     float64 `json:"amount"`            // Amount of SKA coins to burn
+	Amount     string  `json:"amount"`            // Amount of SKA coins to burn (string for precision)
 	CoinType   uint8   `json:"cointype"`          // SKA coin type (1-255)
 	Passphrase string  `json:"passphrase"`        // Wallet passphrase for authorization
 	Comment    *string `json:"comment,omitempty"` // Optional comment for user records
@@ -1136,7 +1136,7 @@ type SendToBurnCmd struct {
 // sendtoburn JSON-RPC command.
 //
 // WARNING: This operation is IRREVERSIBLE. Burned coins are permanently destroyed.
-func NewSendToBurnCmd(amount float64, coinType uint8, passphrase string, comment *string) *SendToBurnCmd {
+func NewSendToBurnCmd(amount string, coinType uint8, passphrase string, comment *string) *SendToBurnCmd {
 	return &SendToBurnCmd{
 		Amount:     amount,
 		CoinType:   coinType,

@@ -349,6 +349,7 @@ var helpDescsEnUS = map[string]string{
 	"vin-blockindex":    "The block idx of the origin transaction",
 	"vin-blockheight":   "The block height of the origin transaction",
 	"vin-amountin":      "The amount in",
+	"vin-skaamountin":   "The SKA amount in (string for precision with large values)",
 
 	// ScriptSig help.
 	"scriptsig-asm": "Disassembly of the script",
@@ -356,6 +357,7 @@ var helpDescsEnUS = map[string]string{
 
 	// Vout help.
 	"vout-value":        "The amount in VAR",
+	"vout-skavalue":     "The amount in SKA (string for precision with large values)",
 	"vout-n":            "The index of this transaction output",
 	"vout-version":      "The version of the public key script",
 	"vout-cointype":     "The coin type (0=VAR, 1-255=SKA)",

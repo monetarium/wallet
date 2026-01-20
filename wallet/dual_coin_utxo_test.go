@@ -1,13 +1,14 @@
 package wallet
 
 import (
+	"math/big"
 	"testing"
 
-	"github.com/monetarium/monetarium-wallet/wallet/txauthor"
-	"github.com/monetarium/monetarium-wallet/wallet/txrules"
 	"github.com/monetarium/monetarium-node/cointype"
 	"github.com/monetarium/monetarium-node/dcrutil"
 	"github.com/monetarium/monetarium-node/wire"
+	"github.com/monetarium/monetarium-wallet/wallet/txauthor"
+	"github.com/monetarium/monetarium-wallet/wallet/txrules"
 )
 
 // TestDualCoinTxRules tests the dual-coin transaction rules and coin type detection
@@ -73,8 +74,8 @@ func TestDualCoinFeeCalculation(t *testing.T) {
 
 // TestTxAuthorFeeHandling tests that txauthor properly handles fees for all coin types
 func TestTxAuthorFeeHandling(t *testing.T) {
-	// Create mock input source that provides sufficient funds
-	inputSource := func(target dcrutil.Amount) (*txauthor.InputDetail, error) {
+	// Create mock input source for VAR that provides sufficient funds
+	varInputSource := func(target dcrutil.Amount) (*txauthor.InputDetail, error) {
 		// Provide inputs with enough value to cover target + fees
 		mockInput := &wire.TxIn{
 			PreviousOutPoint: wire.OutPoint{Index: 0},
@@ -82,6 +83,23 @@ func TestTxAuthorFeeHandling(t *testing.T) {
 		}
 		return &txauthor.InputDetail{
 			Amount:            target + 1000,
+			Inputs:            []*wire.TxIn{mockInput},
+			RedeemScriptSizes: []int{25}, // P2PKH script size
+		}, nil
+	}
+
+	// Create mock input source for SKA that provides sufficient funds
+	skaInputSource := func(target dcrutil.Amount) (*txauthor.InputDetail, error) {
+		// For SKA, target=0 means collect all available
+		// Provide inputs with enough value to cover outputs + fees
+		skaAmount := int64(100000000 + 10000) // Output amount + extra for fees
+		mockInput := &wire.TxIn{
+			PreviousOutPoint: wire.OutPoint{Index: 0},
+			ValueIn:          skaAmount,
+		}
+		return &txauthor.InputDetail{
+			Amount:            dcrutil.Amount(skaAmount),
+			SKAAmount:         cointype.SKAAmountFromInt64(skaAmount),
 			Inputs:            []*wire.TxIn{mockInput},
 			RedeemScriptSizes: []int{25}, // P2PKH script size
 		}, nil
@@ -100,7 +118,7 @@ func TestTxAuthorFeeHandling(t *testing.T) {
 		{Value: 100000000, CoinType: cointype.CoinTypeVAR},
 	}
 
-	varTx, err := txauthor.NewUnsignedTransaction(varOutputs, relayFeePerKb, inputSource, changeSource, 100000)
+	varTx, err := txauthor.NewUnsignedTransaction(varOutputs, relayFeePerKb, varInputSource, changeSource, 100000)
 	if err != nil {
 		t.Fatalf("Failed to create VAR transaction: %v", err)
 	}
@@ -117,11 +135,12 @@ func TestTxAuthorFeeHandling(t *testing.T) {
 	}
 
 	// Test SKA transaction - should also include fees (fixed in our changes)
+	// SKA outputs use SKAValue, not Value
 	skaOutputs := []*wire.TxOut{
-		{Value: 100000000, CoinType: cointype.CoinType(1)},
+		{Value: 0, SKAValue: big.NewInt(100000000), CoinType: cointype.CoinType(1)},
 	}
 
-	skaTx, err := txauthor.NewUnsignedTransaction(skaOutputs, relayFeePerKb, inputSource, changeSource, 100000)
+	skaTx, err := txauthor.NewUnsignedTransaction(skaOutputs, relayFeePerKb, skaInputSource, changeSource, 100000)
 	if err != nil {
 		t.Fatalf("Failed to create SKA transaction: %v", err)
 	}
@@ -130,7 +149,12 @@ func TestTxAuthorFeeHandling(t *testing.T) {
 	skaInputTotal := dcrutil.Amount(skaTx.Tx.TxIn[0].ValueIn)
 	skaOutputTotal := dcrutil.Amount(0)
 	for _, out := range skaTx.Tx.TxOut {
-		skaOutputTotal += dcrutil.Amount(out.Value)
+		// SKA outputs store value in SKAValue
+		if out.SKAValue != nil {
+			skaOutputTotal += dcrutil.Amount(out.SKAValue.Int64())
+		} else {
+			skaOutputTotal += dcrutil.Amount(out.Value)
+		}
 	}
 	skaFee := skaInputTotal - skaOutputTotal
 	if skaFee <= 0 {

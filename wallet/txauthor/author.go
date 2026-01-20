@@ -35,6 +35,7 @@ const (
 // script sizes.
 type InputDetail struct {
 	Amount            dcrutil.Amount
+	SKAAmount         cointype.SKAAmount // For SKA coins that exceed int64
 	Inputs            []*wire.TxIn
 	Scripts           [][]byte
 	RedeemScriptSizes []int
@@ -52,7 +53,8 @@ type AuthoredTx struct {
 	Tx                           *wire.MsgTx
 	PrevScripts                  [][]byte
 	TotalInput                   dcrutil.Amount
-	ChangeIndex                  int // negative if no change
+	SKATotalInput                cointype.SKAAmount // For SKA coins that exceed int64
+	ChangeIndex                  int                // negative if no change
 	EstimatedSignedSerializeSize int
 }
 
@@ -68,6 +70,18 @@ func sumOutputValues(outputs []*wire.TxOut) (totalOutput dcrutil.Amount) {
 		totalOutput += dcrutil.Amount(txOut.Value)
 	}
 	return totalOutput
+}
+
+// sumSKAOutputValues sums the SKAValue fields from transaction outputs.
+// This is used for SKA transactions where amounts exceed int64.
+func sumSKAOutputValues(outputs []*wire.TxOut) cointype.SKAAmount {
+	total := cointype.Zero()
+	for _, txOut := range outputs {
+		if txOut.SKAValue != nil {
+			total = total.Add(cointype.NewSKAAmount(txOut.SKAValue))
+		}
+	}
+	return total
 }
 
 // NewUnsignedTransaction creates an unsigned transaction paying to one or more
@@ -93,14 +107,28 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb dcrutil.Amount,
 
 	const op errors.Op = "txauthor.NewUnsignedTransaction"
 
+	// Determine if this is an SKA transaction
+	isSKA := len(outputs) > 0 && outputs[0].CoinType.IsSKA()
+
+	// For SKA, use big.Int amounts; for VAR, use int64
 	targetAmount := sumOutputValues(outputs)
+	targetSKAAmount := cointype.Zero()
+	if isSKA {
+		targetSKAAmount = sumSKAOutputValues(outputs)
+	}
+
 	scriptSizes := []int{txsizes.RedeemP2PKHSigScriptSize}
 	changeScript, changeScriptVersion, err := fetchChange.Script()
 	if err != nil {
 		return nil, errors.E(op, err)
 	}
 	changeScriptSize := fetchChange.ScriptSize()
-	maxSignedSize := txsizes.EstimateSerializeSize(scriptSizes, outputs, changeScriptSize)
+	var maxSignedSize int
+	if isSKA {
+		maxSignedSize = txsizes.EstimateSerializeSizeSKA(scriptSizes, outputs, changeScriptSize)
+	} else {
+		maxSignedSize = txsizes.EstimateSerializeSize(scriptSizes, outputs, changeScriptSize)
+	}
 
 	// Calculate initial fee for transaction size estimation
 	// SKA emission transactions have zero fees, all other transactions use normal fees
@@ -117,19 +145,41 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb dcrutil.Amount,
 	}
 
 	for {
-		inputDetail, err := fetchInputs(targetAmount + targetFee)
+		// For SKA, pass target=0 to collect all available UTXOs since we can't
+		// pass big.Int through the int64 parameter. Then check with big.Int.
+		var inputTarget dcrutil.Amount
+		if isSKA {
+			inputTarget = 0 // Get all available SKA UTXOs
+		} else {
+			inputTarget = targetAmount + targetFee
+		}
+
+		inputDetail, err := fetchInputs(inputTarget)
 		if err != nil {
 			return nil, errors.E(op, err)
 		}
 
-		if inputDetail.Amount < targetAmount+targetFee {
-			return nil, errors.E(op, errors.InsufficientBalance)
+		// Check if we have sufficient balance
+		if isSKA {
+			// For SKA, compare using big.Int
+			targetWithFee := targetSKAAmount.Add(cointype.SKAAmountFromInt64(int64(targetFee)))
+			if inputDetail.SKAAmount.Cmp(targetWithFee) < 0 {
+				return nil, errors.E(op, errors.InsufficientBalance)
+			}
+		} else {
+			if inputDetail.Amount < targetAmount+targetFee {
+				return nil, errors.E(op, errors.InsufficientBalance)
+			}
 		}
 
 		scriptSizes := make([]int, 0, len(inputDetail.RedeemScriptSizes))
 		scriptSizes = append(scriptSizes, inputDetail.RedeemScriptSizes...)
 
-		maxSignedSize = txsizes.EstimateSerializeSize(scriptSizes, outputs, changeScriptSize)
+		if isSKA {
+			maxSignedSize = txsizes.EstimateSerializeSizeSKA(scriptSizes, outputs, changeScriptSize)
+		} else {
+			maxSignedSize = txsizes.EstimateSerializeSize(scriptSizes, outputs, changeScriptSize)
+		}
 
 		// Calculate fee based on actual transaction size
 		// Check if this is an SKA emission transaction for final fee calculation
@@ -144,10 +194,20 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb dcrutil.Amount,
 			maxRequiredFee = 0 // SKA emission transactions have zero fees
 		}
 
-		remainingAmount := inputDetail.Amount - targetAmount
-		if remainingAmount < maxRequiredFee {
-			targetFee = maxRequiredFee
-			continue
+		// Check remaining amount covers fees
+		if isSKA {
+			remainingSKA := inputDetail.SKAAmount.Sub(targetSKAAmount)
+			requiredFee := cointype.SKAAmountFromInt64(int64(maxRequiredFee))
+			if remainingSKA.Cmp(requiredFee) < 0 {
+				targetFee = maxRequiredFee
+				continue
+			}
+		} else {
+			remainingAmount := inputDetail.Amount - targetAmount
+			if remainingAmount < maxRequiredFee {
+				targetFee = maxRequiredFee
+				continue
+			}
 		}
 
 		if maxSignedSize > maxTxSize {
@@ -163,13 +223,30 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb dcrutil.Amount,
 			Expiry:   0,
 		}
 		changeIndex := -1
-		changeAmount := inputDetail.Amount - targetAmount - maxRequiredFee
+
+		// Calculate change amount based on coin type
+		var changeAmount dcrutil.Amount
+		var changeSKAAmount cointype.SKAAmount
+		if isSKA {
+			changeSKAAmount = inputDetail.SKAAmount.Sub(targetSKAAmount).Sub(
+				cointype.SKAAmountFromInt64(int64(maxRequiredFee)))
+		} else {
+			changeAmount = inputDetail.Amount - targetAmount - maxRequiredFee
+		}
 
 		// For dust amount check, use the same fee rate as transaction
 		dustFeeRate := relayFeePerKb
 
-		if changeAmount != 0 && !txrules.IsDustAmount(changeAmount,
-			changeScriptSize, dustFeeRate) {
+		// Check if change output should be added
+		var hasChange bool
+		if isSKA {
+			// For SKA, skip dust check (different economics) - just check if non-zero
+			hasChange = !changeSKAAmount.IsZero() && !changeSKAAmount.IsNegative()
+		} else {
+			hasChange = changeAmount != 0 && !txrules.IsDustAmount(changeAmount, changeScriptSize, dustFeeRate)
+		}
+
+		if hasChange {
 			if len(changeScript) > txscript.MaxScriptElementSize {
 				return nil, errors.E(errors.Invalid, "script size exceed maximum bytes "+
 					"pushable to the stack")
@@ -182,22 +259,36 @@ func NewUnsignedTransaction(outputs []*wire.TxOut, relayFeePerKb dcrutil.Amount,
 			}
 
 			change := &wire.TxOut{
-				Value:    int64(changeAmount),
 				Version:  changeScriptVersion,
 				PkScript: changeScript,
 				CoinType: changeCoinType,
 			}
+
+			// Set value based on coin type
+			if isSKA {
+				change.Value = 0 // SKA uses SKAValue, not Value
+				change.SKAValue = changeSKAAmount.BigInt()
+			} else {
+				change.Value = int64(changeAmount)
+			}
+
 			l := len(outputs)
 			unsignedTransaction.TxOut = append(outputs[:l:l], change)
 			changeIndex = l
 		} else {
-			maxSignedSize = txsizes.EstimateSerializeSize(scriptSizes,
-				unsignedTransaction.TxOut, 0)
+			if isSKA {
+				maxSignedSize = txsizes.EstimateSerializeSizeSKA(scriptSizes,
+					unsignedTransaction.TxOut, 0)
+			} else {
+				maxSignedSize = txsizes.EstimateSerializeSize(scriptSizes,
+					unsignedTransaction.TxOut, 0)
+			}
 		}
 		return &AuthoredTx{
 			Tx:                           unsignedTransaction,
 			PrevScripts:                  inputDetail.Scripts,
 			TotalInput:                   inputDetail.Amount,
+			SKATotalInput:                inputDetail.SKAAmount,
 			ChangeIndex:                  changeIndex,
 			EstimatedSignedSerializeSize: maxSignedSize,
 		}, nil

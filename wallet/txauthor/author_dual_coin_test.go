@@ -5,14 +5,15 @@
 package txauthor_test
 
 import (
+	"math/big"
 	"testing"
 
-	"github.com/monetarium/monetarium-wallet/wallet/txauthor"
-	"github.com/monetarium/monetarium-wallet/wallet/txrules"
-	"github.com/monetarium/monetarium-wallet/wallet/txsizes"
 	"github.com/monetarium/monetarium-node/cointype"
 	"github.com/monetarium/monetarium-node/dcrutil"
 	"github.com/monetarium/monetarium-node/wire"
+	"github.com/monetarium/monetarium-wallet/wallet/txauthor"
+	"github.com/monetarium/monetarium-wallet/wallet/txrules"
+	"github.com/monetarium/monetarium-wallet/wallet/txsizes"
 )
 
 // Dual-coin test helper functions
@@ -21,8 +22,18 @@ func p2pkhOutputsWithCoinType(coinType cointype.CoinType, amounts ...dcrutil.Amo
 	v := make([]*wire.TxOut, 0, len(amounts))
 	for _, a := range amounts {
 		outScript := make([]byte, txsizes.P2PKHOutputSize)
-		txOut := wire.NewTxOut(int64(a), outScript)
-		txOut.CoinType = coinType
+		txOut := &wire.TxOut{
+			PkScript: outScript,
+			CoinType: coinType,
+		}
+		if coinType.IsSKA() {
+			// SKA outputs use SKAValue, Value must be 0
+			txOut.Value = 0
+			txOut.SKAValue = big.NewInt(int64(a))
+		} else {
+			// VAR outputs use Value
+			txOut.Value = int64(a)
+		}
 		v = append(v, txOut)
 	}
 	return v
@@ -30,19 +41,34 @@ func p2pkhOutputsWithCoinType(coinType cointype.CoinType, amounts ...dcrutil.Amo
 
 func makeInputSourceWithCoinType(unspents []*wire.TxOut) txauthor.InputSource {
 	currentTotal := dcrutil.Amount(0)
+	currentSKATotal := cointype.Zero()
 	currentInputs := make([]*wire.TxIn, 0, len(unspents))
 	redeemScriptSizes := make([]int, 0, len(unspents))
 	f := func(target dcrutil.Amount) (*txauthor.InputDetail, error) {
-		for currentTotal < target && len(unspents) != 0 {
+		// For SKA, target=0 means collect all; for VAR, collect until target is met
+		for len(unspents) != 0 {
 			u := unspents[0]
+			// Get the value from the appropriate field based on coin type
+			var value int64
+			if u.CoinType.IsSKA() && u.SKAValue != nil {
+				value = u.SKAValue.Int64()
+				currentSKATotal = currentSKATotal.Add(cointype.SKAAmountFromInt64(value))
+			} else {
+				value = u.Value
+			}
+			// Check if we have enough for VAR (target > 0)
+			if target > 0 && currentTotal >= target {
+				break
+			}
 			unspents = unspents[1:]
-			nextInput := wire.NewTxIn(&wire.OutPoint{}, u.Value, nil)
-			currentTotal += dcrutil.Amount(u.Value)
+			nextInput := wire.NewTxIn(&wire.OutPoint{}, value, nil)
+			currentTotal += dcrutil.Amount(value)
 			currentInputs = append(currentInputs, nextInput)
 			redeemScriptSizes = append(redeemScriptSizes, txsizes.RedeemP2PKHSigScriptSize)
 		}
 		return &txauthor.InputDetail{
 			Amount:            currentTotal,
+			SKAAmount:         currentSKATotal,
 			Inputs:            currentInputs,
 			RedeemScriptSizes: redeemScriptSizes,
 		}, nil

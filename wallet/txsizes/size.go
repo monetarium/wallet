@@ -131,11 +131,26 @@ func sumOutputSerializeSizes(outputs []*wire.TxOut) (serializeSize int) {
 // additional change output if changeScriptSize is greater than 0. Passing 0
 // does not add a change output.
 func EstimateSerializeSize(scriptSizes []int, txOuts []*wire.TxOut, changeScriptSize int) int {
+	return estimateSerializeSizeInternal(scriptSizes, txOuts, changeScriptSize, false)
+}
+
+// EstimateSerializeSizeSKA returns a worst case serialize size estimate for a
+// signed SKA transaction. SKA outputs have a slightly different wire format
+// (1-byte length prefix for the value), so change output estimation differs.
+func EstimateSerializeSizeSKA(scriptSizes []int, txOuts []*wire.TxOut, changeScriptSize int) int {
+	return estimateSerializeSizeInternal(scriptSizes, txOuts, changeScriptSize, true)
+}
+
+func estimateSerializeSizeInternal(scriptSizes []int, txOuts []*wire.TxOut, changeScriptSize int, isSKA bool) int {
 	inputCount := len(scriptSizes)
 	outputCount := len(txOuts)
 	changeSize := 0
 	if changeScriptSize != 0 {
-		changeSize = EstimateOutputSize(changeScriptSize)
+		if isSKA {
+			changeSize = EstimateOutputSizeSKA(changeScriptSize)
+		} else {
+			changeSize = EstimateOutputSize(changeScriptSize)
+		}
 		outputCount++
 	}
 
@@ -155,9 +170,15 @@ func EstimateSerializeSize(scriptSizes []int, txOuts []*wire.TxOut, changeScript
 	}
 
 	// Calculate witness input sizes (signature scripts)
+	// V13 format: [ValueIn:8][SKAValueInLen:1][SKAValueIn:N][BlockHeight:4][BlockIndex:4][SigScript:var]
+	// For SKA inputs, SKAValueIn can be up to 16 bytes (worst case)
 	witnessInputsSize := 0
 	for _, scriptSize := range scriptSizes {
-		witnessInputsSize += EstimateInputWitnessSize(scriptSize)
+		if isSKA {
+			witnessInputsSize += EstimateInputWitnessSizeSKA(scriptSize)
+		} else {
+			witnessInputsSize += EstimateInputWitnessSize(scriptSize)
+		}
 	}
 
 	// Calculate output sizes (includes CoinType field for dual-coin)
@@ -223,6 +244,23 @@ func EstimateOutputSize(scriptSize int) int {
 	return 8 + 1 + 2 + wire.VarIntSerializeSize(uint64(scriptSize)) + scriptSize
 }
 
+// EstimateOutputSizeSKA returns the serialize size estimate for an SKA tx output.
+// SKA outputs have a different format from VAR:
+//   - 1 byte coin type
+//   - 1 byte value length prefix
+//   - N bytes value (up to 16 bytes for large amounts)
+//   - 2 bytes version
+//   - the compact int representation of the script size
+//   - the supplied script size
+//
+// We use worst-case 16 bytes for value to ensure fee is never underestimated.
+// SKA amounts can be very large (900T * 1e18 = ~14 bytes), so we round up.
+func EstimateOutputSizeSKA(scriptSize int) int {
+	// SKA format: CoinType(1) + ValLen(1) + Value(16 max) + Version(2) + VarInt + PkScript
+	// Always overestimate to avoid fee rejection
+	return 1 + 1 + 16 + 2 + wire.VarIntSerializeSize(uint64(scriptSize)) + scriptSize
+}
+
 // EstimateInputPrefixSize returns the serialize size estimate for a tx input prefix
 //   - 32 bytes previous tx
 //   - 4 bytes output index
@@ -233,11 +271,22 @@ func EstimateInputPrefixSize() int {
 }
 
 // EstimateInputWitnessSize returns the serialize size estimate for a tx input witness
-//   - 8 bytes amount
+// V13 format: [ValueIn:8][SKAValueInLen:1][SKAValueIn:N][BlockHeight:4][BlockIndex:4][SigScript:var]
+//   - 8 bytes amount (ValueIn for fraud proofs)
+//   - 1 byte SKAValueInLen (V13: always present, 0 for VAR inputs)
 //   - 4 bytes block height
 //   - 4 bytes block index
 //   - the compact int representation of the script size
 //   - the supplied script size
 func EstimateInputWitnessSize(scriptSize int) int {
-	return 8 + 4 + 4 + wire.VarIntSerializeSize(uint64(scriptSize)) + scriptSize
+	// V13 format includes SKAValueInLen (1 byte), which is 0 for VAR inputs
+	return 8 + 1 + 4 + 4 + wire.VarIntSerializeSize(uint64(scriptSize)) + scriptSize
+}
+
+// EstimateInputWitnessSizeSKA returns the serialize size estimate for an SKA tx input witness.
+// SKA inputs include SKAValueIn which can be up to 16 bytes for large amounts.
+// We use worst-case 16 bytes to ensure fee is never underestimated.
+func EstimateInputWitnessSizeSKA(scriptSize int) int {
+	// V13 SKA format: ValueIn(8) + SKAValueInLen(1) + SKAValueIn(16 max) + BlockHeight(4) + BlockIndex(4) + VarInt + SigScript
+	return 8 + 1 + 16 + 4 + 4 + wire.VarIntSerializeSize(uint64(scriptSize)) + scriptSize
 }

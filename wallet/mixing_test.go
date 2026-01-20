@@ -10,7 +10,9 @@ import (
 
 func MsgTxFromHex(hexTx string) (*wire.MsgTx, error) {
 	tx := new(wire.MsgTx)
-	err := tx.Deserialize(hex.NewDecoder(strings.NewReader(hexTx)))
+	// Use DualCoinVersion (12) to deserialize legacy transaction data
+	// that was serialized before SKABigIntVersion (13) wire format changes
+	err := tx.BtcDecode(hex.NewDecoder(strings.NewReader(hexTx)), wire.DualCoinVersion)
 	if err != nil {
 		return nil, err
 	}

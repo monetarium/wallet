@@ -143,27 +143,27 @@ func TestSendToAddressCmdWithCoinType(t *testing.T) {
 			name: "SendToAddress with VAR coin type",
 			cmd: &SendToAddressCmd{
 				Address:  "SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc",
-				Amount:   1.5,
+				Amount:   "1.5",
 				CoinType: uint8Ptr(0),
 			},
-			wantJSON: `{"address":"SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc","amount":1.5,"cointype":0}`,
+			wantJSON: `{"address":"SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc","amount":"1.5","cointype":0}`,
 		},
 		{
 			name: "SendToAddress with SKA coin type",
 			cmd: &SendToAddressCmd{
 				Address:  "SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc",
-				Amount:   0.25,
+				Amount:   "0.25",
 				CoinType: uint8Ptr(1),
 			},
-			wantJSON: `{"address":"SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc","amount":0.25,"cointype":1}`,
+			wantJSON: `{"address":"SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc","amount":"0.25","cointype":1}`,
 		},
 		{
 			name: "SendToAddress without coin type",
 			cmd: &SendToAddressCmd{
 				Address: "SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc",
-				Amount:  2.0,
+				Amount:  "2.0",
 			},
-			wantJSON: `{"address":"SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc","amount":2}`,
+			wantJSON: `{"address":"SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc","amount":"2.0"}`,
 		},
 	}
 
@@ -269,15 +269,15 @@ func TestCommandConstructors(t *testing.T) {
 	})
 
 	t.Run("NewSendToAddressCmd with CoinType", func(t *testing.T) {
-		cmd := NewSendToAddressCmd("SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc", 1.5, nil, nil)
+		cmd := NewSendToAddressCmd("SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc", "1.5", nil, nil)
 		// Manually set CoinType to test the structure
 		cmd.CoinType = uint8Ptr(1)
 
 		if cmd.Address != "SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc" {
 			t.Errorf("Address = %s, want SsWKp7wtdTZYabYFYSc9cnxhwFEjA5g4pFc", cmd.Address)
 		}
-		if cmd.Amount != 1.5 {
-			t.Errorf("Amount = %f, want 1.5", cmd.Amount)
+		if cmd.Amount != "1.5" {
+			t.Errorf("Amount = %s, want 1.5", cmd.Amount)
 		}
 		if *cmd.CoinType != 1 {
 			t.Errorf("CoinType = %d, want 1", *cmd.CoinType)

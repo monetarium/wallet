@@ -172,7 +172,7 @@ func (w *Wallet) OutputInfo(ctx context.Context, out *wire.OutPoint) (OutputInfo
 		}
 
 		info.Received = txDetails.Received
-		info.Amount = dcrutil.Amount(txDetails.TxRecord.MsgTx.TxOut[out.Index].Value)
+		info.Amount = dcrutil.Amount(txDetails.TxRecord.MsgTx.TxOut[out.Index].GetValue())
 		info.FromCoinbase = compat.IsEitherCoinBaseTx(&txDetails.TxRecord.MsgTx)
 		return nil
 	})

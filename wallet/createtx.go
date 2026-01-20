@@ -546,7 +546,7 @@ func (w *Wallet) authorTx(ctx context.Context, op errors.Op, a *authorTx) error 
 	// Warn when spending UTXOs controlled by imported keys created change for
 	// the default account.
 	if atx.ChangeIndex >= 0 && a.account == udb.ImportedAddrAccount {
-		changeAmount := dcrutil.Amount(atx.Tx.TxOut[atx.ChangeIndex].Value)
+		changeAmount := dcrutil.Amount(atx.Tx.TxOut[atx.ChangeIndex].GetValue())
 		log.Warnf("Spend from imported account produced change: moving"+
 			" %v from imported account into default account.", changeAmount)
 	}
@@ -704,10 +704,17 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 	// Fill out inputs.
 	forSigning := make([]Input, 0, len(eligible))
 	totalInput := dcrutil.Amount(0)
+	totalSKAInput := cointype.Zero()
 	for _, e := range eligible {
 		txIn := wire.NewTxIn(&e.OutPoint, e.PrevOut.Value, nil)
+		// Set SKAValueIn for SKA inputs (needed for V13 wire format)
+		if e.PrevOut.CoinType.IsSKA() && e.PrevOut.SKAValue != nil {
+			txIn.SKAValueIn = e.PrevOut.SKAValue
+			totalSKAInput = totalSKAInput.Add(cointype.NewSKAAmount(e.PrevOut.SKAValue))
+		} else {
+			totalInput += dcrutil.Amount(e.PrevOut.Value)
+		}
 		msgtx.AddTxIn(txIn)
-		totalInput += dcrutil.Amount(e.PrevOut.Value)
 		forSigning = append(forSigning, e)
 		scriptSizes = append(scriptSizes, txsizes.RedeemP2SHSigScriptSize)
 	}
@@ -731,44 +738,102 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 		return txToMultisigError(errors.E(op, err))
 	}
 	vers, p2shScript := scAddr.PaymentScript()
-	txOut := &wire.TxOut{
-		Value:    int64(amount),
-		PkScript: p2shScript,
-		Version:  vers,
-		CoinType: coinType,
-	}
-	msgtx.AddTxOut(txOut)
 
-	// Add change if we need it.
-	changeSize := 0
-	if totalInput > amount+feeEstForTx {
-		changeSize = txsizes.P2PKHPkScriptSize
-	}
-	feeSize := txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, changeSize)
-	feeEst := txrules.FeeForSerializeSize(w.RelayFeeForCoinType(ctx, coinType), feeSize)
+	// Handle VAR and SKA separately to avoid int64 overflow
+	var feeSize int
+	if coinType.IsSKA() {
+		// SKA path: use big.Int arithmetic
+		skaAmount := cointype.SKAAmountFromInt64(int64(amount))
 
-	if totalInput < amount+feeEst {
-		return txToMultisigError(errors.E(op, errors.InsufficientBalance))
-	}
-	if totalInput > amount+feeEst {
-		changeSource := p2PKHChangeSource{
-			persist: w.persistReturnedChild(ctx, dbtx),
-			account: account,
-			wallet:  w,
-			ctx:     ctx,
-		}
-
-		pkScript, vers, err := changeSource.Script()
-		if err != nil {
-			return txToMultisigError(err)
-		}
-		change := totalInput - (amount + feeEst)
-		msgtx.AddTxOut(&wire.TxOut{
-			Value:    int64(change),
+		// Create output with SKAValue (Value=0 for SKA)
+		txOut := &wire.TxOut{
+			Value:    0,
+			SKAValue: skaAmount.BigInt(),
+			PkScript: p2shScript,
 			Version:  vers,
-			PkScript: pkScript,
 			CoinType: coinType,
-		})
+		}
+		msgtx.AddTxOut(txOut)
+
+		// Estimate fee (fees are always small enough for int64)
+		skaFeeEst := cointype.SKAAmountFromInt64(int64(feeEstForTx))
+		changeSize := 0
+		if totalSKAInput.Cmp(skaAmount.Add(skaFeeEst)) > 0 {
+			changeSize = txsizes.P2PKHPkScriptSize
+		}
+		feeSize = txsizes.EstimateSerializeSizeSKA(scriptSizes, msgtx.TxOut, changeSize)
+		feeEst := txrules.FeeForSerializeSize(w.RelayFeeForCoinType(ctx, coinType), feeSize)
+		skaFeeEstActual := cointype.SKAAmountFromInt64(int64(feeEst))
+
+		// Balance check
+		required := skaAmount.Add(skaFeeEstActual)
+		if totalSKAInput.Cmp(required) < 0 {
+			return txToMultisigError(errors.E(op, errors.InsufficientBalance))
+		}
+
+		// Add change if needed
+		if totalSKAInput.Cmp(required) > 0 {
+			changeSource := p2PKHChangeSource{
+				persist: w.persistReturnedChild(ctx, dbtx),
+				account: account,
+				wallet:  w,
+				ctx:     ctx,
+			}
+
+			pkScript, vers, err := changeSource.Script()
+			if err != nil {
+				return txToMultisigError(err)
+			}
+			change := totalSKAInput.Sub(required)
+			msgtx.AddTxOut(&wire.TxOut{
+				Value:    0,
+				SKAValue: change.BigInt(),
+				Version:  vers,
+				PkScript: pkScript,
+				CoinType: coinType,
+			})
+		}
+	} else {
+		// VAR path: use int64 arithmetic
+		txOut := &wire.TxOut{
+			Value:    int64(amount),
+			PkScript: p2shScript,
+			Version:  vers,
+			CoinType: coinType,
+		}
+		msgtx.AddTxOut(txOut)
+
+		// Add change if we need it.
+		changeSize := 0
+		if totalInput > amount+feeEstForTx {
+			changeSize = txsizes.P2PKHPkScriptSize
+		}
+		feeSize = txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, changeSize)
+		feeEst := txrules.FeeForSerializeSize(w.RelayFeeForCoinType(ctx, coinType), feeSize)
+
+		if totalInput < amount+feeEst {
+			return txToMultisigError(errors.E(op, errors.InsufficientBalance))
+		}
+		if totalInput > amount+feeEst {
+			changeSource := p2PKHChangeSource{
+				persist: w.persistReturnedChild(ctx, dbtx),
+				account: account,
+				wallet:  w,
+				ctx:     ctx,
+			}
+
+			pkScript, vers, err := changeSource.Script()
+			if err != nil {
+				return txToMultisigError(err)
+			}
+			change := totalInput - (amount + feeEst)
+			msgtx.AddTxOut(&wire.TxOut{
+				Value:    int64(change),
+				Version:  vers,
+				PkScript: pkScript,
+				CoinType: coinType,
+			})
+		}
 	}
 
 	err = w.signP2PKHMsgTx(msgtx, forSigning, addrmgrNs)
@@ -776,9 +841,12 @@ func (w *Wallet) txToMultisigInternal(ctx context.Context, op errors.Op, dbtx wa
 		return txToMultisigError(errors.E(op, err))
 	}
 
-	err = w.checkHighFees(totalInput, msgtx)
-	if err != nil {
-		return txToMultisigError(errors.E(op, err))
+	// checkHighFees uses int64, skip for SKA (fees are always reasonable for SKA)
+	if !coinType.IsSKA() {
+		err = w.checkHighFees(totalInput, msgtx)
+		if err != nil {
+			return txToMultisigError(errors.E(op, err))
+		}
 	}
 
 	err = n.PublishTransactions(ctx, msgtx)
@@ -912,7 +980,9 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 	}
 
 	// Add the txins using all the eligible outputs.
-	totalAdded := dcrutil.Amount(0)
+	// Track VAR and SKA totals separately to avoid int64 overflow for SKA
+	totalAddedVAR := dcrutil.Amount(0)
+	totalAddedSKA := cointype.Zero()
 	scriptSizes := make([]int, 0, maxNumIns)
 	forSigning := make([]Input, 0, maxNumIns)
 	count := 0
@@ -926,8 +996,14 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 		}
 
 		txIn := wire.NewTxIn(&e.OutPoint, e.PrevOut.Value, nil)
+		// Set SKAValueIn for SKA inputs (needed for V13 wire format)
+		if e.PrevOut.CoinType.IsSKA() && e.PrevOut.SKAValue != nil {
+			txIn.SKAValueIn = e.PrevOut.SKAValue
+			totalAddedSKA = totalAddedSKA.Add(cointype.NewSKAAmount(e.PrevOut.SKAValue))
+		} else {
+			totalAddedVAR += dcrutil.Amount(e.PrevOut.Value)
+		}
 		msgtx.AddTxIn(txIn)
-		totalAdded += dcrutil.Amount(e.PrevOut.Value)
 		forSigning = append(forSigning, e)
 		scriptSizes = append(scriptSizes, txsizes.RedeemP2PKHSigScriptSize)
 		count++
@@ -936,12 +1012,30 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 	// Get an initial fee estimate based on the number of selected inputs
 	// and added outputs, with no change.
 	feeRate := w.RelayFeeForCoinType(ctx, coinType)
-	szEst := txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, 0)
+	var szEst int
+	if coinType.IsSKA() {
+		szEst = txsizes.EstimateSerializeSizeSKA(scriptSizes, msgtx.TxOut, 0)
+	} else {
+		szEst = txsizes.EstimateSerializeSize(scriptSizes, msgtx.TxOut, 0)
+	}
 	feeEst := txrules.FeeForSerializeSize(feeRate, szEst)
 
-	msgtx.TxOut[0].Value = int64(totalAdded - feeEst)
-	if txrules.IsDustOutput(msgtx.TxOut[0], feeRate) {
-		return nil, errors.E(op, errors.InsufficientBalance)
+	// Set output value based on coin type
+	if coinType.IsSKA() {
+		// SKA path: use big.Int arithmetic
+		skaFee := cointype.SKAAmountFromInt64(int64(feeEst))
+		skaOutput := totalAddedSKA.Sub(skaFee)
+		if skaOutput.IsNegative() || skaOutput.IsZero() {
+			return nil, errors.E(op, errors.InsufficientBalance)
+		}
+		msgtx.TxOut[0].Value = 0
+		msgtx.TxOut[0].SKAValue = skaOutput.BigInt()
+	} else {
+		// VAR path: use int64 arithmetic
+		msgtx.TxOut[0].Value = int64(totalAddedVAR - feeEst)
+		if txrules.IsDustOutput(msgtx.TxOut[0], feeRate) {
+			return nil, errors.E(op, errors.InsufficientBalance)
+		}
 	}
 
 	err = w.signP2PKHMsgTx(msgtx, forSigning, addrmgrNs)
@@ -953,9 +1047,12 @@ func (w *Wallet) compressWalletInternal(ctx context.Context, op errors.Op, dbtx 
 		return nil, errors.E(op, err)
 	}
 
-	err = w.checkHighFees(totalAdded, msgtx)
-	if err != nil {
-		return nil, errors.E(op, err)
+	// checkHighFees uses int64, skip for SKA
+	if !coinType.IsSKA() {
+		err = w.checkHighFees(totalAddedVAR, msgtx)
+		if err != nil {
+			return nil, errors.E(op, err)
+		}
 	}
 
 	err = n.PublishTransactions(ctx, msgtx)

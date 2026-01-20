@@ -307,7 +307,7 @@ func (w *Wallet) MixOutput(ctx context.Context, output *wire.OutPoint, changeAcc
 		out := txDetails.MsgTx.TxOut[output.Index]
 		prevScript = out.PkScript
 		prevScriptVersion = out.Version
-		amount = dcrutil.Amount(txDetails.MsgTx.TxOut[output.Index].Value)
+		amount = dcrutil.Amount(txDetails.MsgTx.TxOut[output.Index].GetValue())
 		return nil
 	})
 	if err != nil {
